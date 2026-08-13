@@ -1,0 +1,6 @@
+{
+  "name": "RiderChat V2 - WhatsApp Panel",
+  "description": "Exclusively designed WhatsApp Cloud API management dashboard with real-time Firestore sync, client lists, message statuses, and quick replies.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

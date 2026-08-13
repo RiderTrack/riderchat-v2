@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "Chat": {
+      "title": "Chat",
+      "description": "Conversación de WhatsApp con un cliente",
+      "type": "object",
+      "properties": {
+        "clientPhone": { "type": "string" },
+        "clientName": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastMessageTime": { "type": "string" },
+        "unreadCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "closed", "blocked"] },
+        "createdAt": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["clientPhone", "clientName", "status"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Mensaje individual dentro de un chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "direction": { "type": "string", "enum": ["sent", "received"] },
+        "text": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "sent", "delivered", "read", "failed"] },
+        "timestamp": { "type": "string" },
+        "senderId": { "type": "string" }
+      },
+      "required": ["direction", "status", "senderId"]
+    }
+  },
+  "firestore": {
+    "/chats/{clientPhone}": {
+      "schema": { "$ref": "#/entities/Chat" },
+      "description": "Colección principal de chats por número de teléfono"
+    },
+    "/chats/{clientPhone}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Subcolección de mensajes de cada conversación"
+    }
+  }
+}
