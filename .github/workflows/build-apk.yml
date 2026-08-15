@@ -74,6 +74,17 @@ jobs:
           sed -i 's/com.android.tools.build:gradle:[0-9.]+/com.android.tools.build:gradle:8.2.0/g' android/build.gradle android/app/build.gradle 2>/dev/null || true
           echo "✅ Android Gradle Plugin actualizado"
 
+          # Subir compileSdkVersion a 35 (Android 15) para VANILLA_ICE_CREAM
+          if [ -f android/variables.gradle ]; then
+            sed -i 's/compileSdkVersion = 34/compileSdkVersion = 35/g' android/variables.gradle
+            sed --i 's/targetSdkVersion = 34/targetSdkVersion = 35/g' android/variables.gradle
+            echo "✅ variables.gradle actualizado a SDK 35"
+            cat android/variables.gradle
+          fi
+          # También parchear app/build.gradle por si acaso
+          sed -i 's/compileSdk 34/compileSdk 35/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/compileSdkVersion 34/compileSdkVersion 35/g' android/app/build.gradle 2>/dev/null || true
+
           # Parchear build.gradle RAÍZ - forzar BouncyCastle compatible
           cat >> android/build.gradle << 'EOF'
 
