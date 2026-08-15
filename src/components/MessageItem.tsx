@@ -73,27 +73,38 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
     switch (message.status) {
       case 'pending':
-        return <Clock className="w-3.5 h-3.5 text-emerald-200 animate-pulse" title="Enviando..." />;
+        return (
+          <span className="flex items-center gap-0.5" title="⏳ Enviando...">
+            <Clock className="w-3.5 h-3.5 text-emerald-200 animate-pulse" />
+          </span>
+        );
       case 'sent':
-        return <Check className="w-3.5 h-3.5 text-emerald-200" title="Enviado a servidor WhatsApp" />;
+        return (
+          <span className="flex items-center gap-0.5" title="✓ Enviado a WhatsApp">
+            <Check className="w-3.5 h-3.5 text-emerald-200 stroke-[2.5]" />
+          </span>
+        );
       case 'delivered':
-        return <CheckCheck className="w-3.5 h-3.5 text-emerald-200" title="Entregado al cliente" />;
+        return (
+          <span className="flex items-center gap-0.5" title="✓✓ Entregado al cliente">
+            <CheckCheck className="w-4 h-4 text-emerald-200 stroke-[2.5]" />
+          </span>
+        );
       case 'read':
         return (
-          <CheckCheck
-            className="w-4 h-4 text-sky-300 stroke-[2.5]"
-            title="Leído por el cliente"
-          />
+          <span className="flex items-center gap-0.5" title="✓✓ Leído por el cliente 👀">
+            <CheckCheck className="w-4 h-4 text-sky-300 stroke-[3]" />
+          </span>
         );
       case 'failed':
         return (
           <button
             onClick={() => onRetry && onRetry(message)}
             className="inline-flex items-center gap-1 text-red-200 hover:text-white bg-red-800/40 px-1.5 py-0.5 rounded text-xs transition-colors"
-            title="Reintentar envío"
+            title="❌ Falló - Toca para reintentar"
           >
             <AlertCircle className="w-3.5 h-3.5 text-red-300" />
-            <span className="text-[10px]">Falló - Reintentar</span>
+            <span className="text-[10px]">❌ Falló - Reintentar 🔄</span>
           </button>
         );
       default:

@@ -13,6 +13,7 @@ import { ChatWindow } from './ChatWindow';
 import { ConfigModal } from './ConfigModal';
 import { NewChatModal } from './NewChatModal';
 import { QuickTemplatesModal } from './QuickTemplatesModal';
+import { BroadcastModal } from './BroadcastModal';
 
 interface LayoutProps {
   chats: Chat[];
@@ -73,6 +74,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
   const [showNewChatModal, setShowNewChatModal] = useState<boolean>(false);
   const [showTemplatesModal, setShowTemplatesModal] = useState<boolean>(false);
+  const [showBroadcastModal, setShowBroadcastModal] = useState<boolean>(false);
 
   // Simulated connection status for header (Req #10)
   const [isConnected, setIsConnected] = useState<boolean>(true);
@@ -180,6 +182,7 @@ export const Layout: React.FC<LayoutProps> = ({
             activePhone={activePhone}
             onSelectChat={(p) => onSelectChat(p)}
             onNewChat={() => setShowNewChatModal(true)}
+            onOpenBroadcast={() => setShowBroadcastModal(true)}
             filter={filter}
             onFilterChange={onFilterChange}
             isLoading={isLoadingChats}
@@ -227,6 +230,12 @@ export const Layout: React.FC<LayoutProps> = ({
         onClose={() => setShowTemplatesModal(false)}
         templates={quickTemplates}
         onSaveTemplates={onSaveTemplates}
+      />
+
+      <BroadcastModal
+        isOpen={showBroadcastModal}
+        onClose={() => setShowBroadcastModal(false)}
+        config={config}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import {
   sendMessageToFirestore,
   updateMessageStatus,
   simulateIncomingCustomerMessage,
+  updateMessageMetaId,
 } from '../services/firestore';
 import { localCache } from '../services/local-cache';
 
@@ -28,7 +29,6 @@ export function useWhatsAppAPI() {
       setIsSending(true);
 
       const timestamp = Date.now();
-      const tempId = `sent_${timestamp}_${Math.random().toString(36).substring(2, 6)}`;
 
       // 1. Save pending message to Firestore & local state
       const newMsg: Omit<Message, 'id'> = {
@@ -40,7 +40,8 @@ export function useWhatsAppAPI() {
         replyToId,
       };
 
-      await sendMessageToFirestore(clientPhone, newMsg);
+      // Capturar el ID real que Firestore asigna
+      const firestoreMsgId = await sendMessageToFirestore(clientPhone, newMsg);
 
       // 2. Dispatch via Meta Cloud API
       const res = await sendWhatsAppMessage(config, {
@@ -50,17 +51,19 @@ export function useWhatsAppAPI() {
       });
 
       if (res.success) {
-        // Update to sent
-        await updateMessageStatus(clientPhone, tempId, 'sent');
+        // Update to sent (usar ID real de Firestore + ID de Meta)
+        await updateMessageStatus(clientPhone, firestoreMsgId, 'sent');
+        // Guardar el metaMessageId para que el webhook pueda actualizar el estado después
+        await updateMessageMetaId(clientPhone, firestoreMsgId, res.messageId || '');
 
-        // Simulate delivery ticks sequence in mock mode for Rudy
+        // Simular delivery ticks sequence in mock mode for Rudy
         if (config.mockMode || !config.phoneNumberId) {
           setTimeout(() => {
-            updateMessageStatus(clientPhone, tempId, 'delivered');
+            updateMessageStatus(clientPhone, firestoreMsgId, 'delivered');
           }, 1500);
 
           setTimeout(() => {
-            updateMessageStatus(clientPhone, tempId, 'read');
+            updateMessageStatus(clientPhone, firestoreMsgId, 'read');
           }, 3500);
 
           // Simulated customer automatic response in demo mode
@@ -77,7 +80,7 @@ export function useWhatsAppAPI() {
         return true;
       } else {
         // Mark as failed with error
-        await updateMessageStatus(clientPhone, tempId, 'failed', res.error || 'Falló el envío de WhatsApp');
+        await updateMessageStatus(clientPhone, firestoreMsgId, 'failed', res.error || 'Falló el envío de WhatsApp');
         setIsSending(false);
         return false;
       }
@@ -98,7 +101,6 @@ export function useWhatsAppAPI() {
 
       setIsSending(true);
       const timestamp = Date.now();
-      const tempId = `sent_media_${timestamp}`;
 
       let mediaText = caption || '';
       if (!mediaText) {
@@ -108,7 +110,7 @@ export function useWhatsAppAPI() {
         else if (media.type === 'location') mediaText = `📍 Ubicación: ${media.locationName || 'GPS'}`;
       }
 
-      await sendMessageToFirestore(clientPhone, {
+      const firestoreMsgId = await sendMessageToFirestore(clientPhone, {
         direction: 'sent',
         text: mediaText,
         media,
@@ -127,13 +129,14 @@ export function useWhatsAppAPI() {
       });
 
       if (res.success) {
-        await updateMessageStatus(clientPhone, tempId, 'sent');
-        setTimeout(() => updateMessageStatus(clientPhone, tempId, 'delivered'), 1200);
-        setTimeout(() => updateMessageStatus(clientPhone, tempId, 'read'), 3000);
+        await updateMessageStatus(clientPhone, firestoreMsgId, 'sent');
+        await updateMessageMetaId(clientPhone, firestoreMsgId, res.messageId || '');
+        setTimeout(() => updateMessageStatus(clientPhone, firestoreMsgId, 'delivered'), 1200);
+        setTimeout(() => updateMessageStatus(clientPhone, firestoreMsgId, 'read'), 3000);
         setIsSending(false);
         return true;
       } else {
-        await updateMessageStatus(clientPhone, tempId, 'failed', res.error);
+        await updateMessageStatus(clientPhone, firestoreMsgId, 'failed', res.error);
         setIsSending(false);
         return false;
       }
@@ -157,6 +160,7 @@ export function useWhatsAppAPI() {
 
       if (res.success) {
         await updateMessageStatus(clientPhone, msg.id, 'sent');
+        await updateMessageMetaId(clientPhone, msg.id, res.messageId || '');
         setTimeout(() => updateMessageStatus(clientPhone, msg.id, 'delivered'), 1000);
         setTimeout(() => updateMessageStatus(clientPhone, msg.id, 'read'), 2500);
         return true;

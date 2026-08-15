@@ -1,0 +1,91 @@
+name: Build APK (Android)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_BASE_PATH: ./
+
+      - name: Install Capacitor CLI
+        run: npm install -D @capacitor/cli @capacitor/core @capacitor/android @capacitor/app @capacitor/splash-screen --legacy-peer-deps
+
+      - name: Add Android platform
+        run: npx cap add android || true
+
+      - name: Copy web assets to Android
+        run: npx cap copy android
+
+      - name: Update Android project
+        run: npx cap update android || true
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/ridertrack.keystore
+        continue-on-error: true
+
+      - name: Create debug keystore if no release keystore
+        run: |
+          if [ ! -f android/app/ridertrack.keystore ]; then
+            keytool -genkey -v -keystore android/app/ridertrack.keystore \
+              -alias ridertrack -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass ridertrack -keypass ridertrack \
+              -dname "CN=RiderTrack, OU=Dev, O=RiderTrack, L=Lima, ST=Lima, C=PE"
+          fi
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'ridertrack' }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'ridertrack' }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || 'ridertrack' }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RiderChat-V2-APK
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30

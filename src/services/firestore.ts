@@ -433,6 +433,38 @@ export async function updateMessageStatus(
 }
 
 /**
+ * Updates a message's Meta API message ID (for status updates via webhook)
+ */
+export async function updateMessageMetaId(
+  clientPhone: string,
+  messageId: string,
+  metaMessageId: string
+): Promise<void> {
+  if (!metaMessageId) return;
+
+  if (db) {
+    try {
+      const msgRef = doc(db, 'chats', clientPhone, 'messages', messageId);
+      await updateDoc(msgRef, {
+        metaMessageId,
+      });
+    } catch (e) {
+      handleFirestoreError(e, 'update', `chats/${clientPhone}/messages/${messageId}`);
+    }
+  }
+
+  // Update local mock
+  const msgs = mockMessages[clientPhone];
+  if (msgs) {
+    const target = msgs.find((m) => m.id === messageId);
+    if (target) {
+      (target as any).metaMessageId = metaMessageId;
+      notifyMessageListeners(clientPhone);
+    }
+  }
+}
+
+/**
  * Marks all messages in a chat as read & resets unread count
  */
 export async function markChatAsRead(clientPhone: string): Promise<void> {

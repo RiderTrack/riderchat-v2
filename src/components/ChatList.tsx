@@ -11,6 +11,7 @@ import {
   Archive,
   Trash2,
   Tag,
+  Rocket,
 } from 'lucide-react';
 import { Chat, ChatFilterOptions } from '../types/chat';
 import { formatMessageTime, getInitials, truncateText } from '../utils/formatters';
@@ -21,6 +22,7 @@ interface ChatListProps {
   activePhone: string | null;
   onSelectChat: (phone: string) => void;
   onNewChat: () => void;
+  onOpenBroadcast: () => void;
   filter: ChatFilterOptions;
   onFilterChange: (newFilter: ChatFilterOptions) => void;
   isLoading?: boolean;
@@ -31,6 +33,7 @@ export const ChatList: React.FC<ChatListProps> = ({
   activePhone,
   onSelectChat,
   onNewChat,
+  onOpenBroadcast,
   filter,
   onFilterChange,
   isLoading = false,
@@ -103,14 +106,24 @@ export const ChatList: React.FC<ChatListProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onNewChat}
-            className="p-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-2xl shadow-xs transition-all flex items-center gap-1.5 text-xs font-semibold"
-            title="Nuevo chat de WhatsApp"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Nuevo Chat</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={onOpenBroadcast}
+              className="p-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 active:scale-95 text-white rounded-2xl shadow-xs transition-all flex items-center gap-1.5 text-xs font-semibold"
+              title="📢 Broadcast con plantillas aprobadas"
+            >
+              <Rocket className="w-4 h-4" />
+              <span className="hidden sm:inline">📢 Broadcast</span>
+            </button>
+            <button
+              onClick={onNewChat}
+              className="p-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-2xl shadow-xs transition-all flex items-center gap-1.5 text-xs font-semibold"
+              title="Nuevo chat de WhatsApp"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Nuevo</span>
+            </button>
+          </div>
         </div>
 
         {/* Search Bar */}
