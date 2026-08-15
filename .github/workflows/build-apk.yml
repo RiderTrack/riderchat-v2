@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -56,6 +56,35 @@ jobs:
       - name: Add Android platform
         run: npx cap add android || true
 
+      - name: Patch build.gradle to fix BouncyCastle conflict
+        run: |
+          # Parchar build.gradle del proyecto para forzar bcprov-jdk15to18:1.70
+          cat >> android/build.gradle << 'EOF'
+
+          // Fix BouncyCastle conflict (bcprov-jdk18on → bcprov-jdk15to18:1.70)
+          configurations.all {
+              resolutionStrategy {
+                  force 'org.bouncycastle:bcprov-jdk15to18:1.70'
+              }
+          }
+          configurations.configureEach {
+              resolutionStrategy {
+                  force 'org.bouncycastle:bcprov-jdk15to18:1.70'
+              }
+          }
+          buildscript {
+              configurations {
+                  classpath {
+                      resolutionStrategy {
+                          force 'org.bouncycastle:bcprov-jdk15to18:1.70'
+                      }
+                  }
+              }
+          }
+          EOF
+          echo "✅ build.gradle parcheado"
+          cat android/build.gradle | tail -20
+
       - name: Copy web assets to Android
         run: npx cap copy android
 
@@ -81,7 +110,7 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --stacktrace
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'ridertrack' }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'ridertrack' }}
