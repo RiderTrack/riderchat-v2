@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Settings, ShieldCheck, Database, Zap, Key, Phone, RefreshCw, CheckCircle } from 'lucide-react';
 import { WhatsAppConfig } from '../types/chat';
 import { seedInitialData, isFirestoreAvailable } from '../services/firestore';
@@ -22,6 +22,17 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   const [mockMode, setMockMode] = useState<boolean>(config.mockMode);
 
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+
+  // 🐛 FIX: Sincronizar los campos cuando se abre el modal o cambia la config
+  // Sin esto, los campos aparecen vacíos aunque ya se haya guardado
+  useEffect(() => {
+    if (isOpen) {
+      setPhoneNumberId(config.phoneNumberId || '');
+      setAccessToken(config.accessToken || '');
+      setBusinessAccountId(config.businessAccountId || '');
+      setMockMode(config.mockMode);
+    }
+  }, [isOpen, config]);
 
   if (!isOpen) return null;
 
