@@ -111,34 +111,108 @@ jobs:
       - name: Update Android project
         run: npx cap update android || true
 
-      - name: Decode keystore
+      # ═══════════════════════════════════════════════════════════
+      # 🔑 FIRMA DE APK CON KEYSTORE PERMANENTE
+      # Si ANDROID_KEYSTORE_BASE64 está configurado, usa la key release
+      # Si no, usa una key debug (la APK instala encima pero pierde datos)
+      # ═══════════════════════════════════════════════════════════
+
+      - name: Check for release keystore
+        id: check_keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ "$KEYSTORE_BASE64" != "" ]; then
+            echo "has_keystore=true" >> $GITHUB_OUTPUT
+            echo "✅ Keystore de release encontrado en secrets"
+          else
+            echo "has_keystore=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No hay keystore de release, se usará debug"
+          fi
+
+      - name: Decode release keystore
+        if: steps.check_keystore.outputs.has_keystore == 'true'
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/ridertrack.keystore
-        continue-on-error: true
+          echo "✅ Keystore de release decodificado"
 
-      - name: Create debug keystore if no release keystore
+      - name: Create debug keystore (fallback)
+        if: steps.check_keystore.outputs.has_keystore == 'false'
         run: |
-          if [ ! -f android/app/ridertrack.keystore ]; then
-            keytool -genkey -v -keystore android/app/ridertrack.keystore \
-              -alias ridertrack -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass ridertrack -keypass ridertrack \
-              -dname "CN=RiderTrack, OU=Dev, O=RiderTrack, L=Lima, ST=Lima, C=PE"
+          keytool -genkey -v -keystore android/app/ridertrack.keystore \
+            -alias ridertrack -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass ridertrack -keypass ridertrack \
+            -dname "CN=RiderTrack, OU=Dev, O=RiderTrack, L=Lima, ST=Lima, C=PE"
+          echo "✅ Keystore debug creado (fallback)"
+
+      - name: Configure signing in app/build.gradle
+        run: |
+          # Determinar password según si hay keystore de release
+          if [ "${{ steps.check_keystore.outputs.has_keystore }}" = "true" ]; then
+            STORE_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+            KEY_PASS="${{ secrets.ANDROID_KEY_PASSWORD }}"
+          else
+            STORE_PASS="ridertrack"
+            KEY_ALIAS="ridertrack"
+            KEY_PASS="ridertrack"
           fi
+
+          # Agregar signingConfigs y release al app/build.gradle
+          cat >> android/app/build.gradle << EOF
+
+          // Configuración de firma (generada automáticamente por GitHub Actions)
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('ridertrack.keystore')
+                      storePassword '$STORE_PASS'
+                      keyAlias '$KEY_ALIAS'
+                      keyPassword '$KEY_PASS'
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+                  debug {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+          echo "✅ Configuración de firma agregada a app/build.gradle"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build APK
+      - name: Build Release APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'ridertrack' }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'ridertrack' }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || 'ridertrack' }}
 
+      - name: Rename APK to include date
+        run: |
+          mkdir -p output
+          APK_FILE=$(find android/app/build/outputs/apk/release -name "*.apk" -type f | head -1)
+          if [ -n "$APK_FILE" ]; then
+            DATE=$(date +%Y%m%d_%H%M)
+            cp "$APK_FILE" "output/RiderChat-V2-${DATE}.apk"
+            echo "✅ APK renombrada: RiderChat-V2-${DATE}.apk"
+          else
+            echo "❌ No se encontró APK en outputs"
+            find android/app/build/outputs -name "*.apk" -type f
+            exit 1
+          fi
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: RiderChat-V2-APK
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: output/*.apk
           retention-days: 30
