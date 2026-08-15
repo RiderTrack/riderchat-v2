@@ -58,32 +58,43 @@ jobs:
 
       - name: Patch build.gradle to fix BouncyCastle conflict
         run: |
-          # Parchar build.gradle del proyecto para forzar bcprov-jdk15to18:1.70
+          # Parchar build.gradle RAÍZ (android/build.gradle)
           cat >> android/build.gradle << 'EOF'
 
-          // Fix BouncyCastle conflict (bcprov-jdk18on → bcprov-jdk15to18:1.70)
-          configurations.all {
-              resolutionStrategy {
-                  force 'org.bouncycastle:bcprov-jdk15to18:1.70'
-              }
-          }
-          configurations.configureEach {
-              resolutionStrategy {
-                  force 'org.bouncycastle:bcprov-jdk15to18:1.70'
+          // Fix BouncyCastle: forzar versión 1.74 (sin Java 21 class files)
+          allprojects {
+              configurations.all {
+                  resolutionStrategy {
+                      force 'org.bouncycastle:bcprov-jdk18on:1.74'
+                      force 'org.bouncycastle:bcprov-jdk15to18:1.70'
+                  }
               }
           }
           buildscript {
               configurations {
                   classpath {
                       resolutionStrategy {
+                          force 'org.bouncycastle:bcprov-jdk18on:1.74'
                           force 'org.bouncycastle:bcprov-jdk15to18:1.70'
                       }
                   }
               }
           }
           EOF
-          echo "✅ build.gradle parcheado"
-          cat android/build.gradle | tail -20
+          echo "✅ build.gradle raíz parcheado"
+
+          # Parchar android/app/build.gradle también
+          cat >> android/app/build.gradle << 'EOF'
+
+          // Fix BouncyCastle en app
+          configurations.all {
+              resolutionStrategy {
+                  force 'org.bouncycastle:bcprov-jdk18on:1.74'
+                  force 'org.bouncycastle:bcprov-jdk15to18:1.70'
+              }
+          }
+          EOF
+          echo "✅ app/build.gradle parcheado"
 
       - name: Copy web assets to Android
         run: npx cap copy android
@@ -110,7 +121,7 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --no-daemon
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'ridertrack' }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'ridertrack' }}
