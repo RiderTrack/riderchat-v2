@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -56,45 +56,37 @@ jobs:
       - name: Add Android platform
         run: npx cap add android || true
 
-      - name: Patch build.gradle to fix BouncyCastle conflict
+      - name: Upgrade Gradle to 8.7 (fix BouncyCastle Java 21 issue)
         run: |
-          # Parchar build.gradle RAÍZ (android/build.gradle)
+          # Actualizar gradle-wrapper.properties a Gradle 8.7
+          cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          networkTimeout=10000
+          validateDistributionUrl=true
+          EOF
+          echo "✅ Gradle actualizado a 8.7"
+
+          # Actualizar versión del Android Gradle Plugin (AGP) en build.gradle
+          sed -i 's/com.android.tools.build:gradle:[0-9.]+/com.android.tools.build:gradle:8.2.0/g' android/build.gradle android/app/build.gradle 2>/dev/null || true
+          echo "✅ Android Gradle Plugin actualizado"
+
+          # Parchear build.gradle RAÍZ - forzar BouncyCastle compatible
           cat >> android/build.gradle << 'EOF'
 
-          // Fix BouncyCastle: forzar versión 1.74 (sin Java 21 class files)
+          // Fix BouncyCastle conflict
           allprojects {
               configurations.all {
                   resolutionStrategy {
                       force 'org.bouncycastle:bcprov-jdk18on:1.74'
-                      force 'org.bouncycastle:bcprov-jdk15to18:1.70'
-                  }
-              }
-          }
-          buildscript {
-              configurations {
-                  classpath {
-                      resolutionStrategy {
-                          force 'org.bouncycastle:bcprov-jdk18on:1.74'
-                          force 'org.bouncycastle:bcprov-jdk15to18:1.70'
-                      }
                   }
               }
           }
           EOF
           echo "✅ build.gradle raíz parcheado"
-
-          # Parchar android/app/build.gradle también
-          cat >> android/app/build.gradle << 'EOF'
-
-          // Fix BouncyCastle en app
-          configurations.all {
-              resolutionStrategy {
-                  force 'org.bouncycastle:bcprov-jdk18on:1.74'
-                  force 'org.bouncycastle:bcprov-jdk15to18:1.70'
-              }
-          }
-          EOF
-          echo "✅ app/build.gradle parcheado"
 
       - name: Copy web assets to Android
         run: npx cap copy android
