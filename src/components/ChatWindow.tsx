@@ -171,6 +171,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         onSendMedia={onSendMedia}
         quickTemplates={quickTemplates}
         clientName={chat.clientName}
+        clientPhone={chat.clientPhone}
         isSending={isSending}
       />
 
