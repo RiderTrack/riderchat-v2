@@ -35,7 +35,6 @@ export interface RutaActiva {
 
 /**
  * Suscribe a los cambios de ruta_activa en Firestore
- * Compatible con la estructura que usa RiderTrack Modular
  */
 export function subscribeToRutaActiva(
   userId: string,
@@ -90,9 +89,7 @@ export function getClientesDeRuta(ruta: RutaActiva | null): RutaCliente[] {
  */
 export function normalizarTelefono(tel: string): string {
   let limpio = String(tel || '').replace(/\D/g, '');
-  // Si empieza con 51 y tiene 11 dígitos, está bien
   if (limpio.startsWith('51') && limpio.length === 11) return limpio;
-  // Si tiene 9 dígitos (número peruano), agregar 51
   if (limpio.length === 9 && limpio.startsWith('9')) return '51' + limpio;
   return limpio;
 }
@@ -105,15 +102,13 @@ export function normalizarTelefono(tel: string): string {
 
 export interface PlantillaMeta {
   name: string;
-  language: string; // es_PE para español Perú
+  language: string;
   label: string;
   descripcion: string;
   emoji: string;
   componentes?: any[];
 }
 
-// Plantillas aprobadas en tu cuenta de Meta (nombres exactos)
-// IMPORTANTE: El idioma es es_PE (Español Perú), no es
 export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
   {
     name: 'inicio_ruta',
@@ -153,30 +148,11 @@ export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
 ];
 
 /**
- * Construye los parámetros para cada plantilla según sus variables EXACTAS
- * Basado en las plantillas aprobadas en Meta (variables confirmadas por Rudy)
- *
- * VARIABLES POR PLANTILLA (según Meta Developers):
- *
- * inicio_ruta (8 variables):
- *   {{customer_name}}, {{order_product}}, {{order_amount}},
- *   {{address_street}}, {{address_district}}, {{start_time}},
- *   {{total_deliveries}}, {{delivery_number}}
- *
- * solicitar_ubicacion (4 variables):
- *   {{customer_name}}, {{order_product}}, {{order_amount}}, {{address_district}}
- *
- * qr_metodo_de_pago (5 variables):
- *   {{customer_name}}, {{yape_number}}, {{yape_owner_name}},
- *   {{order_product}}, {{order_amount}}
- *
- * eta_actualizada (4 variables):
- *   {{customer_name}}, {{eta_minutes}}, {{order_product}}, {{order_amount}}
- *
- * entrega_completada (3 variables):
- *   {{customer_name}}, {{order_product}}, {{order_amount}}
+ * Construye los parámetros para cada plantilla usando variables CON NOMBRE
+ * Meta Cloud API soporta variables con nombre ({{customer_name}})
+ * cuando se envían como objects en lugar de strings
  */
-function construirParametros(nombrePlantilla: string, cliente: RutaCliente): string[] {
+function construirParametros(nombrePlantilla: string, cliente: RutaCliente): { name: string; value: string }[] {
   const customer_name = cliente.nombre || 'Cliente';
   const order_product = cliente.prod || 'Producto';
   const order_amount = cliente.cobrar ? cliente.cobrar.toFixed(2) : '0.00';
@@ -191,69 +167,53 @@ function construirParametros(nombrePlantilla: string, cliente: RutaCliente): str
 
   switch (nombrePlantilla) {
     case 'inicio_ruta':
-      // Hola, {{customer_name}}! 👋
-      // 📦 Pedido: {{order_product}}
-      // 💰 Monto: S/ {{order_amount}}
-      // 📍 Dirección: {{address_street}}, {{address_district}}
-      // Mi ruta empieza a partir de las {{start_time}} ⏱️
-      // 🗺️ Mi ruta de hoy — {{total_deliveries}} entregas
-      // ⏱️ Eres la entrega #{{delivery_number}}.
+      // 8 variables: customer_name, order_product, order_amount,
+      // address_street, address_district, start_time, total_deliveries, delivery_number
       return [
-        customer_name,      // {{1}}
-        order_product,      // {{2}}
-        order_amount,       // {{3}}
-        address_street,     // {{4}}
-        address_district,   // {{5}}
-        start_time,         // {{6}}
-        total_deliveries,   // {{7}}
-        delivery_number,    // {{8}}
+        { name: 'customer_name', value: customer_name },
+        { name: 'order_product', value: order_product },
+        { name: 'order_amount', value: order_amount },
+        { name: 'address_street', value: address_street },
+        { name: 'address_district', value: address_district },
+        { name: 'start_time', value: start_time },
+        { name: 'total_deliveries', value: total_deliveries },
+        { name: 'delivery_number', value: delivery_number },
       ];
 
     case 'solicitar_ubicacion':
-      // Hola {{customer_name}} 👋
-      // Te escribo para confirmar tu pedido {{order_product}} por S/ {{order_amount}}
-      // a entregar en {{address_district}}.
+      // 4 variables: customer_name, order_product, order_amount, address_district
       return [
-        customer_name,      // {{1}}
-        order_product,      // {{2}}
-        order_amount,       // {{3}}
-        address_district,   // {{4}}
+        { name: 'customer_name', value: customer_name },
+        { name: 'order_product', value: order_product },
+        { name: 'order_amount', value: order_amount },
+        { name: 'address_district', value: address_district },
       ];
 
     case 'qr_metodo_de_pago':
-      // Buenas, {{customer_name}} 👋
-      // El número de SOLO YAPE es: {{yape_number}}
-      // A nombre de: {{yape_owner_name}}
-      // 📦 Producto: {{order_product}}
-      // 💰 Monto a pagar: S/ {{order_amount}}
+      // 5 variables: customer_name, yape_number, yape_owner_name, order_product, order_amount
       return [
-        customer_name,      // {{1}}
-        yape_number,        // {{2}}
-        yape_owner_name,    // {{3}}
-        order_product,      // {{4}}
-        order_amount,       // {{5}}
+        { name: 'customer_name', value: customer_name },
+        { name: 'yape_number', value: yape_number },
+        { name: 'yape_owner_name', value: yape_owner_name },
+        { name: 'order_product', value: order_product },
+        { name: 'order_amount', value: order_amount },
       ];
 
     case 'eta_actualizada':
-      // Hola, {{customer_name}} 👋
-      // Le informo que estaré llegando aproximadamente en {{eta_minutes}} minutos ⏱️
-      // 📦 Pedido: {{order_product}}
-      // 💰 Monto a pagar: S/ {{order_amount}}
+      // 4 variables: customer_name, eta_minutes, order_product, order_amount
       return [
-        customer_name,      // {{1}}
-        eta_minutes,        // {{2}}
-        order_product,      // {{3}}
-        order_amount,       // {{4}}
+        { name: 'customer_name', value: customer_name },
+        { name: 'eta_minutes', value: eta_minutes },
+        { name: 'order_product', value: order_product },
+        { name: 'order_amount', value: order_amount },
       ];
 
     case 'entrega_completada':
-      // ✅ ¡{{customer_name}}, tu pedido fue entregado!
-      // 📦 {{order_product}}
-      // 💰 Monto cobrado: S/ {{order_amount}}
+      // 3 variables: customer_name, order_product, order_amount
       return [
-        customer_name,      // {{1}}
-        order_product,      // {{2}}
-        order_amount,       // {{3}}
+        { name: 'customer_name', value: customer_name },
+        { name: 'order_product', value: order_product },
+        { name: 'order_amount', value: order_amount },
       ];
 
     default:
@@ -263,7 +223,8 @@ function construirParametros(nombrePlantilla: string, cliente: RutaCliente): str
 
 /**
  * Envía una plantilla aprobada a un cliente mediante Meta Cloud API
- * Ahora con soporte para variables (parámetros) del cliente
+ *
+ * ESTRATEGIA: Intentar primero CON parámetros, si falla con 132000 intentar SIN parámetros
  */
 export async function enviarPlantillaMeta(
   config: { phoneNumberId: string; accessToken: string; mockMode?: boolean },
@@ -283,40 +244,45 @@ export async function enviarPlantillaMeta(
     };
   }
 
-  // 🎯 Construir componentes con los parámetros del cliente
+  // Construir parámetros del cliente
   let componentes: any[] = [];
-
   if (cliente) {
     const params = construirParametros(plantilla.name, cliente);
     if (params.length > 0) {
+      // 🎯 FIX: Enviar parámetros con NOMBRE (no con números)
+      // Meta Cloud API v21+ soporta parámetros con nombre
       componentes = [{
         type: 'body',
-        parameters: params.map(p => ({ type: 'text', text: p }))
+        parameters: params.map(p => ({
+          type: 'text',
+          text: p.value,
+          parameter_name: p.name  // ← CLAVE: nombre de la variable
+        }))
       }];
     }
   }
 
-  // Llamada real a Meta Cloud API
   const url = `https://graph.facebook.com/v21.0/${config.phoneNumberId}/messages`;
-  const body: any = {
-    messaging_product: 'whatsapp',
-    to: telNormalizado,
-    type: 'template',
-    template: {
+
+  const enviarRequest = async (comps: any[]) => {
+    const body: any = {
+      messaging_product: 'whatsapp',
+      to: telNormalizado,
+      type: 'template',
+      template: {
+        name: plantilla.name,
+        language: { code: plantilla.language },
+        components: comps,
+      },
+    };
+
+    console.log('📡 Enviando plantilla:', {
       name: plantilla.name,
-      language: { code: plantilla.language },
-      components: componentes,
-    },
-  };
+      language: plantilla.language,
+      to: telNormalizado,
+      componentes: comps
+    });
 
-  console.log('📡 Enviando plantilla:', {
-    name: plantilla.name,
-    language: plantilla.language,
-    to: telNormalizado,
-    componentes: componentes
-  });
-
-  try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -326,23 +292,82 @@ export async function enviarPlantillaMeta(
       body: JSON.stringify(body),
     });
 
-    const data = await response.json();
+    return { response, data: await response.json() };
+  };
 
-    if (response.ok && data.messages?.[0]?.id) {
-      return {
-        success: true,
-        messageId: data.messages[0].id,
-      };
+  try {
+    // INTENTO 1: Con parámetros del cliente
+    if (componentes.length > 0) {
+      console.log('🔄 Intento 1: Con parámetros');
+      const { response, data } = await enviarRequest(componentes);
+
+      if (response.ok && data.messages?.[0]?.id) {
+        return { success: true, messageId: data.messages[0].id };
+      }
+
+      const errorMsg = data.error?.message || '';
+      // Si el error es 132000 (parámetros no coinciden), intentar SIN parámetros
+      if (errorMsg.includes('132000') || errorMsg.includes('parameters does not match')) {
+        console.log('⚠️ Error 132000 - Intentando SIN parámetros...');
+      } else {
+        return { success: false, error: errorMsg };
+      }
+    }
+
+    // INTENTO 2: SIN parámetros (template fijo sin variables)
+    console.log('🔄 Intento 2: SIN parámetros');
+    const { response: resp2, data: data2 } = await enviarRequest([]);
+
+    if (resp2.ok && data2.messages?.[0]?.id) {
+      return { success: true, messageId: data2.messages[0].id };
     }
 
     return {
       success: false,
-      error: data.error?.message || `HTTP ${response.status}`,
+      error: data2.error?.message || `HTTP ${resp2.status}`,
     };
   } catch (err: any) {
     return {
       success: false,
       error: err?.message || 'Error de conexión',
     };
+  }
+}
+
+/**
+ * Guarda el mensaje enviado en Firestore para que aparezca en el chat
+ */
+export async function guardarMensajeBroadcastEnFirestore(
+  telefono: string,
+  textoPlantilla: string,
+  messageId: string,
+  nombreCliente?: string
+): Promise<void> {
+  if (!db) return;
+
+  const telLimpio = normalizarTelefono(telefono);
+
+  try {
+    await fetch(
+      `https://firestore.googleapis.com/v1/projects/ridertrack-93c8a/databases/(default)/documents/chats/${telLimpio}/messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            direction: { stringValue: 'sent' },
+            text: { stringValue: textoPlantilla },
+            status: { stringValue: 'sent' },
+            senderId: { stringValue: 'broadcast' },
+            metaMessageId: { stringValue: messageId },
+            timestamp: { timestampValue: new Date().toISOString() },
+          },
+        }),
+      }
+    ).catch(() => {});
+
+    console.log(`📡 Broadcast: mensaje enviado a ${telLimpio}`);
+  } catch (e) {
+    console.warn('Error guardando broadcast en Firestore:', e);
   }
 }
