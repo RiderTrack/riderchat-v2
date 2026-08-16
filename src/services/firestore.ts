@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
+  initializeFirestore,
   getFirestore,
   collection,
   doc,
@@ -33,10 +34,25 @@ let isFirestoreAvailable = false;
 
 try {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app);
+
+  // 🐛 FIX CRÍTICO APK: Usar initializeFirestore con experimentalForceLongPolling
+  // En WebView de Android, fetch streams (WebSocket) fallan silenciosamente
+  // Long polling usa HTTP REST que funciona en WebView
+  const isAPKEnv = typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor?.isNative;
+
+  if (isAPKEnv) {
+    console.log('📱 APK detectado - forzando long polling...');
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    });
+  } else {
+    db = getFirestore(app);
+  }
+
   isFirestoreAvailable = true;
   console.log('✅ Firebase inicializado correctamente');
   console.log('📊 Project ID:', firebaseConfig.projectId);
+  console.log('📊 Long polling forzado:', isAPKEnv);
 } catch (e) {
   console.error('❌ Error inicializando Firebase:', e);
   isFirestoreAvailable = false;
