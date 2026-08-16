@@ -1,4 +1,9 @@
 import { WhatsAppConfig } from '../types/chat';
+import { CapacitorHttp } from '@capacitor/core';
+
+// Detectar si estamos en APK (Capacitor nativo)
+const isNativeAPK = typeof (window as any).Capacitor !== 'undefined' &&
+                    (window as any).Capacitor?.isNative;
 
 export interface SendMessagePayload {
   toPhone: string;
@@ -87,26 +92,52 @@ export async function sendWhatsAppMessage(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
+      let response: any;
+      let data: any;
 
-      const data = await response.json();
+      if (isNativeAPK) {
+        // 🚀 En APK: usar CapacitorHttp (native, sin CORS)
+        console.log('📡 Enviando vía CapacitorHttp (APK nativo)...');
+        response = await CapacitorHttp.post({
+          url: url,
+          headers: {
+            'Authorization': `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          data: requestBody,
+        });
+        data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
 
-      if (response.ok && data.messages?.[0]?.id) {
-        return {
-          success: true,
-          messageId: data.messages[0].id,
-          status: 'sent',
-        };
+        if (response.status >= 200 && response.status < 300 && data.messages?.[0]?.id) {
+          return {
+            success: true,
+            messageId: data.messages[0].id,
+            status: 'sent',
+          };
+        }
+      } else {
+        // 🌐 En Web: usar fetch normal
+        const fetchResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        data = await fetchResponse.json();
+
+        if (fetchResponse.ok && data.messages?.[0]?.id) {
+          return {
+            success: true,
+            messageId: data.messages[0].id,
+            status: 'sent',
+          };
+        }
       }
 
-      const errMsg = data.error?.message || `Meta API HTTP ${response.status}`;
+      const errMsg = data.error?.message || `Meta API HTTP ${response.status || 'unknown'}`;
       console.warn(`WhatsApp Meta API attempt ${attempt + 1} failed: ${errMsg}`);
 
       if (attempt === retries) {
