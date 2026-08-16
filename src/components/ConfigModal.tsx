@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Database, Zap, Key, Phone, RefreshCw, CheckCircle } from 'lucide-react';
+import { X, Settings, ShieldCheck, Database, Zap, Key, Phone, RefreshCw, CheckCircle } from 'lucide-react';
 import { WhatsAppConfig } from '../types/chat';
 import { seedInitialData, isFirestoreAvailable } from '../services/firestore';
-import { localCache, waitForLoad } from '../services/local-cache';
+import { localCache } from '../services/local-cache';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -17,40 +17,52 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   config,
   onSaveConfig,
 }) => {
-  const [phoneNumberId, setPhoneNumberId] = useState<string>(config.phoneNumberId || '');
-  const [accessToken, setAccessToken] = useState<string>(config.accessToken || '');
-  const [businessAccountId, setBusinessAccountId] = useState<string>(config.businessAccountId || '');
-  const [mockMode, setMockMode] = useState<boolean>(config.mockMode);
+  // 🔥 FIX: Leer DIRECTO de localCache (no del prop config que puede estar desactualizado)
+  // Esto arregla el problema de que el modal muestra config vieja
+  const [phoneNumberId, setPhoneNumberId] = useState<string>('');
+  const [accessToken, setAccessToken] = useState<string>('');
+  const [businessAccountId, setBusinessAccountId] = useState<string>('');
+  const [mockMode, setMockMode] = useState<boolean>(true);
 
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
-  // Cargar config desde localCache cuando se abre el modal
-  // o cuando memoryCache termina de cargar (APK)
+  // 🐛 FIX: Cuando se abre el modal, leer DIRECTO de localCache
+  // No depender del prop config que puede estar desactualizado
   useEffect(() => {
     if (isOpen) {
-      const loadConfig = () => {
-        const stored = localCache.getWhatsAppConfig();
-        setPhoneNumberId(stored.phoneNumberId || '');
-        setAccessToken(stored.accessToken || '');
-        setBusinessAccountId(stored.businessAccountId || '');
-        setMockMode(stored.mockMode);
-      };
-
-      // Cargar inmediatamente
-      loadConfig();
-
-      // También cargar cuando waitForLoad termine (APK)
-      waitForLoad().then(loadConfig);
+      const stored = localCache.getWhatsAppConfig();
+      console.log('📖 ConfigModal abierto - leyendo de localCache:', {
+        hasToken: !!stored.accessToken,
+        hasPhoneId: !!stored.phoneNumberId,
+        mockMode: stored.mockMode
+      });
+      setPhoneNumberId(stored.phoneNumberId || '');
+      setAccessToken(stored.accessToken || '');
+      setBusinessAccountId(stored.businessAccountId || '');
+      setMockMode(stored.mockMode);
     }
-  }, [isOpen]);
+  }, [isOpen]); // Solo depender de isOpen, NO de config
 
   if (!isOpen) return null;
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('💾 Guardando configuración:', {
+      phoneNumberId: phoneNumberId.trim() ? '[SET ' + phoneNumberId.trim().length + ' chars]' : '[EMPTY]',
+      accessToken: accessToken.trim() ? '[SET ' + accessToken.trim().length + ' chars]' : '[EMPTY]',
+      mockMode
+    });
+
+    // 🐛 FIX: Verificar que el token realmente esté en el estado
+    const tokenToSave = accessToken.trim();
+    if (!tokenToSave && !mockMode) {
+      alert('⚠️ El token está vacío. Por favor pégalo de nuevo, espera 1 segundo, y toca Guardar.');
+      return;
+    }
+
     onSaveConfig({
       phoneNumberId: phoneNumberId.trim(),
-      accessToken: accessToken.trim(),
+      accessToken: tokenToSave,
       businessAccountId: businessAccountId.trim(),
       mockMode,
     });
@@ -60,6 +72,11 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       onClose();
     }, 1200);
   };
+
+  // Verificar si hay token guardado (leer de localCache directamente)
+  const storedConfig = localCache.getWhatsAppConfig();
+  const hasTokenSaved = storedConfig.accessToken && storedConfig.accessToken.length > 0;
+  const hasPhoneIdSaved = storedConfig.phoneNumberId && storedConfig.phoneNumberId.length > 0;
 
   const handleResetDemoData = () => {
     seedInitialData();
@@ -96,6 +113,32 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             <span>Configuración guardada correctamente.</span>
           </div>
         )}
+
+        {/* 🚦 Indicador visual del estado de la configuración */}
+        <div className={`mb-4 p-3 rounded-xl border text-xs flex items-center gap-2 ${
+          hasTokenSaved && hasPhoneIdSaved && !mockMode
+            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
+            : mockMode
+            ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500/40 text-amber-700 dark:text-amber-300'
+            : 'bg-red-50 dark:bg-red-950/60 border-red-500/40 text-red-700 dark:text-red-300'
+        }`}>
+          {hasTokenSaved && hasPhoneIdSaved && !mockMode ? (
+            <>
+              <CheckCircle className="w-4 h-4 text-emerald-500" />
+              <span>✅ API configurada - Mensajes reales activos</span>
+            </>
+          ) : mockMode ? (
+            <>
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span>⚠️ Modo simulación - Los mensajes NO llegan a WhatsApp real</span>
+            </>
+          ) : (
+            <>
+              <Key className="w-4 h-4 text-red-500" />
+              <span>❌ Sin configurar - Ingresá token y desactivá simulación</span>
+            </>
+          )}
+        </div>
 
         <form onSubmit={handleSave} className="space-y-4">
           {/* Mock mode toggle */}
@@ -147,13 +190,48 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
-                type="password"
+                type="text"
                 value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
-                placeholder="EAAG..."
+                onChange={(e) => {
+                  console.log('📝 onChange - valor recibido:', e.target.value.length, 'caracteres');
+                  setAccessToken(e.target.value);
+                }}
+                onInput={(e) => {
+                  // 🐛 FIX: WebView de Android no dispara onChange al pegar
+                  // Forzar actualización con onInput
+                  const target = e.target as HTMLInputElement;
+                  if (target.value !== accessToken) {
+                    console.log('📋 onInput - actualizando estado:', target.value.length, 'caracteres');
+                    setAccessToken(target.value);
+                  }
+                }}
+                onPaste={(e) => {
+                  // 🐛 FIX: Detectar pegado y forzar actualización
+                  setTimeout(() => {
+                    const target = e.target as HTMLInputElement;
+                    console.log('📋 onPaste - valor pegado:', target.value.length, 'caracteres');
+                    setAccessToken(target.value);
+                  }, 10);
+                }}
+                onBlur={(e) => {
+                  // 🐛 FIX: Al perder foco, asegurar que el estado tenga el valor
+                  console.log('👁️ onBlur - valor final:', e.target.value.length, 'caracteres');
+                  setAccessToken(e.target.value);
+                }}
+                placeholder="Pega aquí tu token (EAAo...)"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 focus:border-emerald-500 outline-none"
               />
             </div>
+            {/* Debug info */}
+            {accessToken && (
+              <p className="text-[10px] text-slate-500 mt-1">
+                📊 Token capturado: {accessToken.length} caracteres
+              </p>
+            )}
           </div>
 
           <div>
@@ -190,7 +268,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             </p>
           </div>
 
-          {/* Footer */}
+          {/* Seed Data Button */}
           <div className="pt-2 flex items-center justify-between">
             <button
               type="button"
