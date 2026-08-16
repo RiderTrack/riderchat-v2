@@ -100,6 +100,7 @@ export function normalizarTelefono(tel: string): string {
 // ═══════════════════════════════════════════════════════════
 // 📋 PLANTILLAS APROBADAS - Meta Cloud API
 // Nombres EXACTOS como están en Meta Developers
+// Idioma: es_PE (Español Perú)
 // ═══════════════════════════════════════════════════════════
 
 export interface PlantillaMeta {
@@ -152,13 +153,123 @@ export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
 ];
 
 /**
+ * Construye los parámetros para cada plantilla según sus variables EXACTAS
+ * Basado en las plantillas aprobadas en Meta (variables confirmadas por Rudy)
+ *
+ * VARIABLES POR PLANTILLA (según Meta Developers):
+ *
+ * inicio_ruta (8 variables):
+ *   {{customer_name}}, {{order_product}}, {{order_amount}},
+ *   {{address_street}}, {{address_district}}, {{start_time}},
+ *   {{total_deliveries}}, {{delivery_number}}
+ *
+ * solicitar_ubicacion (4 variables):
+ *   {{customer_name}}, {{order_product}}, {{order_amount}}, {{address_district}}
+ *
+ * qr_metodo_de_pago (5 variables):
+ *   {{customer_name}}, {{yape_number}}, {{yape_owner_name}},
+ *   {{order_product}}, {{order_amount}}
+ *
+ * eta_actualizada (4 variables):
+ *   {{customer_name}}, {{eta_minutes}}, {{order_product}}, {{order_amount}}
+ *
+ * entrega_completada (3 variables):
+ *   {{customer_name}}, {{order_product}}, {{order_amount}}
+ */
+function construirParametros(nombrePlantilla: string, cliente: RutaCliente): string[] {
+  const customer_name = cliente.nombre || 'Cliente';
+  const order_product = cliente.prod || 'Producto';
+  const order_amount = cliente.cobrar ? cliente.cobrar.toFixed(2) : '0.00';
+  const address_district = cliente.dist || 'Distrito';
+  const address_street = cliente.dir || 'Dirección';
+  const yape_number = '980811297';
+  const yape_owner_name = 'Lorenzo N. Tarazona T.';
+  const eta_minutes = '15';
+  const start_time = '09:00';
+  const total_deliveries = '0';
+  const delivery_number = '0';
+
+  switch (nombrePlantilla) {
+    case 'inicio_ruta':
+      // Hola, {{customer_name}}! 👋
+      // 📦 Pedido: {{order_product}}
+      // 💰 Monto: S/ {{order_amount}}
+      // 📍 Dirección: {{address_street}}, {{address_district}}
+      // Mi ruta empieza a partir de las {{start_time}} ⏱️
+      // 🗺️ Mi ruta de hoy — {{total_deliveries}} entregas
+      // ⏱️ Eres la entrega #{{delivery_number}}.
+      return [
+        customer_name,      // {{1}}
+        order_product,      // {{2}}
+        order_amount,       // {{3}}
+        address_street,     // {{4}}
+        address_district,   // {{5}}
+        start_time,         // {{6}}
+        total_deliveries,   // {{7}}
+        delivery_number,    // {{8}}
+      ];
+
+    case 'solicitar_ubicacion':
+      // Hola {{customer_name}} 👋
+      // Te escribo para confirmar tu pedido {{order_product}} por S/ {{order_amount}}
+      // a entregar en {{address_district}}.
+      return [
+        customer_name,      // {{1}}
+        order_product,      // {{2}}
+        order_amount,       // {{3}}
+        address_district,   // {{4}}
+      ];
+
+    case 'qr_metodo_de_pago':
+      // Buenas, {{customer_name}} 👋
+      // El número de SOLO YAPE es: {{yape_number}}
+      // A nombre de: {{yape_owner_name}}
+      // 📦 Producto: {{order_product}}
+      // 💰 Monto a pagar: S/ {{order_amount}}
+      return [
+        customer_name,      // {{1}}
+        yape_number,        // {{2}}
+        yape_owner_name,    // {{3}}
+        order_product,      // {{4}}
+        order_amount,       // {{5}}
+      ];
+
+    case 'eta_actualizada':
+      // Hola, {{customer_name}} 👋
+      // Le informo que estaré llegando aproximadamente en {{eta_minutes}} minutos ⏱️
+      // 📦 Pedido: {{order_product}}
+      // 💰 Monto a pagar: S/ {{order_amount}}
+      return [
+        customer_name,      // {{1}}
+        eta_minutes,        // {{2}}
+        order_product,      // {{3}}
+        order_amount,       // {{4}}
+      ];
+
+    case 'entrega_completada':
+      // ✅ ¡{{customer_name}}, tu pedido fue entregado!
+      // 📦 {{order_product}}
+      // 💰 Monto cobrado: S/ {{order_amount}}
+      return [
+        customer_name,      // {{1}}
+        order_product,      // {{2}}
+        order_amount,       // {{3}}
+      ];
+
+    default:
+      return [];
+  }
+}
+
+/**
  * Envía una plantilla aprobada a un cliente mediante Meta Cloud API
+ * Ahora con soporte para variables (parámetros) del cliente
  */
 export async function enviarPlantillaMeta(
   config: { phoneNumberId: string; accessToken: string; mockMode?: boolean },
   telefono: string,
   plantilla: PlantillaMeta,
-  componentes?: any[]
+  cliente?: RutaCliente
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const telNormalizado = normalizarTelefono(telefono);
 
@@ -172,6 +283,19 @@ export async function enviarPlantillaMeta(
     };
   }
 
+  // 🎯 Construir componentes con los parámetros del cliente
+  let componentes: any[] = [];
+
+  if (cliente) {
+    const params = construirParametros(plantilla.name, cliente);
+    if (params.length > 0) {
+      componentes = [{
+        type: 'body',
+        parameters: params.map(p => ({ type: 'text', text: p }))
+      }];
+    }
+  }
+
   // Llamada real a Meta Cloud API
   const url = `https://graph.facebook.com/v21.0/${config.phoneNumberId}/messages`;
   const body: any = {
@@ -181,9 +305,16 @@ export async function enviarPlantillaMeta(
     template: {
       name: plantilla.name,
       language: { code: plantilla.language },
-      components: componentes || [],
+      components: componentes,
     },
   };
+
+  console.log('📡 Enviando plantilla:', {
+    name: plantilla.name,
+    language: plantilla.language,
+    to: telNormalizado,
+    componentes: componentes
+  });
 
   try {
     const response = await fetch(url, {
@@ -213,46 +344,5 @@ export async function enviarPlantillaMeta(
       success: false,
       error: err?.message || 'Error de conexión',
     };
-  }
-}
-
-/**
- * Guarda el mensaje enviado en Firestore para que aparezca en el chat
- */
-export async function guardarMensajeBroadcastEnFirestore(
-  telefono: string,
-  textoPlantilla: string,
-  messageId: string,
-  nombreCliente?: string
-): Promise<void> {
-  if (!db) return;
-
-  const telLimpio = normalizarTelefono(telefono);
-
-  try {
-    // Guardar el mensaje en chats/{tel}/messages
-    await fetch(
-      `https://firestore.googleapis.com/v1/projects/ridertrack-93c8a/databases/(default)/documents/chats/${telLimpio}/messages`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fields: {
-            direction: { stringValue: 'sent' },
-            text: { stringValue: textoPlantilla },
-            status: { stringValue: 'sent' },
-            senderId: { stringValue: 'broadcast' },
-            metaMessageId: { stringValue: messageId },
-            timestamp: { timestampValue: new Date().toISOString() },
-          },
-        }),
-      }
-    ).catch(() => {});
-
-    // Usar Firebase Admin SDK (si está disponible en el navegador, lo cual no es el caso)
-    // Por ahora, dejamos que el bot-meta maneje el guardado cuando el cliente responda
-    console.log(`📡 Broadcast: mensaje enviado a ${telLimpio}`);
-  } catch (e) {
-    console.warn('Error guardando broadcast en Firestore:', e);
   }
 }
