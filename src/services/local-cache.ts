@@ -1,5 +1,12 @@
 import { Chat, Message, QuickTemplate, WhatsAppConfig } from '../types/chat';
 
+// ═══════════════════════════════════════════════════════════
+// 🔧 SISTEMA DE ALMACENAMIENTO HÍBRIDO
+// - En APK (Capacitor): usa @capacitor/preferences (nativo, persistente)
+// - En Web (navegador): usa localStorage (funciona normal)
+// Esto arregla el bug del token que se borraba en el APK
+// ═══════════════════════════════════════════════════════════
+
 const KEYS = {
   ACTIVE_CHAT: 'riderchat_active_phone',
   THEME: 'riderchat_theme',
@@ -10,6 +17,75 @@ const KEYS = {
   OFFLINE_CHATS: 'riderchat_offline_chats_v2',
   OFFLINE_MESSAGES_PREFIX: 'riderchat_offline_msg_',
 };
+
+// Detectar si estamos en APK (Capacitor disponible)
+const isNativeAPK = typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor?.isNative;
+
+// Import dinámico de Capacitor Preferences (solo en APK)
+let PreferencesPlugin: any = null;
+if (isNativeAPK) {
+  try {
+    // @ts-ignore - import dinámico solo en APK
+    import('@capacitor/preferences').then(mod => {
+      PreferencesPlugin = mod.Preferences;
+      console.log('✅ Capacitor Preferences cargado (APK nativo)');
+      // Precargar cache cuando el plugin esté disponible
+      preloadCache();
+    }).catch(e => {
+      console.warn('⚠️ No se pudo cargar Capacitor Preferences, usando localStorage:', e);
+    });
+  } catch (e) {
+    console.warn('⚠️ Capacitor Preferences no disponible, usando localStorage');
+  }
+}
+
+// Función helper para guardar (async en APK, sync en web)
+async function setItem(key: string, value: string): Promise<void> {
+  try {
+    if (isNativeAPK && PreferencesPlugin) {
+      await PreferencesPlugin.set({ key, value });
+    } else {
+      localStorage.setItem(key, value);
+    }
+    // Actualizar cache en memoria
+    memoryCache[key] = value;
+  } catch (e) {
+    console.warn(`Error guardando ${key}:`, e);
+    try { localStorage.setItem(key, value); } catch {}
+  }
+}
+
+// Función helper para leer (async en APK, sync en web)
+async function getItem(key: string): Promise<string | null> {
+  try {
+    if (isNativeAPK && PreferencesPlugin) {
+      const result = await PreferencesPlugin.get({ key });
+      return result.value;
+    } else {
+      return localStorage.getItem(key);
+    }
+  } catch (e) {
+    console.warn(`Error leyendo ${key}:`, e);
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+}
+
+// Cache en memoria para lecturas síncronas (compatible con código existente)
+const memoryCache: { [key: string]: string | null } = {};
+
+// Cargar cache desde almacenamiento al iniciar (solo en APK)
+async function preloadCache(): Promise<void> {
+  try {
+    const keys = Object.values(KEYS);
+    for (const key of keys) {
+      const value = await getItem(key);
+      memoryCache[key] = value;
+    }
+    console.log('✅ Cache precargado desde almacenamiento nativo');
+  } catch (e) {
+    console.warn('Error precargando cache:', e);
+  }
+}
 
 export const DEFAULT_QUICK_TEMPLATES: QuickTemplate[] = [
   {
@@ -124,7 +200,14 @@ export const localCache = {
   // WhatsApp Meta Cloud API Config
   getWhatsAppConfig(): WhatsAppConfig {
     try {
-      const saved = localStorage.getItem(KEYS.WA_CONFIG);
+      // En APK: usar cache en memoria (precargado al inicio)
+      // En Web: usar localStorage directamente
+      let saved: string | null = null;
+      if (isNativeAPK) {
+        saved = memoryCache[KEYS.WA_CONFIG] || null;
+      } else {
+        saved = localStorage.getItem(KEYS.WA_CONFIG);
+      }
       if (saved) {
         const parsed = JSON.parse(saved);
         return { ...DEFAULT_WA_CONFIG, ...parsed };
@@ -136,7 +219,13 @@ export const localCache = {
   },
   saveWhatsAppConfig(config: WhatsAppConfig): void {
     try {
-      localStorage.setItem(KEYS.WA_CONFIG, JSON.stringify(config));
+      const jsonStr = JSON.stringify(config);
+      // En APK: guardar en Capacitor Preferences (nativo, persistente)
+      // En Web: guardar en localStorage
+      setItem(KEYS.WA_CONFIG, jsonStr); // async, no esperamos
+      // También guardar en localStorage como backup inmediato
+      try { localStorage.setItem(KEYS.WA_CONFIG, jsonStr); } catch {}
+      console.log('✅ Config guardada en almacenamiento persistente');
     } catch (e) {
       console.warn('LocalStorage error saving WhatsApp config', e);
     }
