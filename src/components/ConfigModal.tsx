@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, ShieldCheck, Database, Zap, Key, Phone, RefreshCw, CheckCircle } from 'lucide-react';
+import { X, Settings, Database, Zap, Key, Phone, RefreshCw, CheckCircle } from 'lucide-react';
 import { WhatsAppConfig } from '../types/chat';
 import { seedInitialData, isFirestoreAvailable } from '../services/firestore';
-import { localCache } from '../services/local-cache';
+import { localCache, waitForLoad } from '../services/local-cache';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -17,41 +17,37 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   config,
   onSaveConfig,
 }) => {
-  // 🔥 FIX: Leer DIRECTO de localCache (no del prop config que puede estar desactualizado)
-  // Esto arregla el problema de que el modal muestra config vieja
-  const [phoneNumberId, setPhoneNumberId] = useState<string>('');
-  const [accessToken, setAccessToken] = useState<string>('');
-  const [businessAccountId, setBusinessAccountId] = useState<string>('');
-  const [mockMode, setMockMode] = useState<boolean>(true);
+  const [phoneNumberId, setPhoneNumberId] = useState<string>(config.phoneNumberId || '');
+  const [accessToken, setAccessToken] = useState<string>(config.accessToken || '');
+  const [businessAccountId, setBusinessAccountId] = useState<string>(config.businessAccountId || '');
+  const [mockMode, setMockMode] = useState<boolean>(config.mockMode);
 
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
-  // 🐛 FIX: Cuando se abre el modal, leer DIRECTO de localCache
-  // No depender del prop config que puede estar desactualizado
+  // Cargar config desde localCache cuando se abre el modal
+  // o cuando memoryCache termina de cargar (APK)
   useEffect(() => {
     if (isOpen) {
-      const stored = localCache.getWhatsAppConfig();
-      console.log('📖 ConfigModal abierto - leyendo de localCache:', {
-        hasToken: !!stored.accessToken,
-        hasPhoneId: !!stored.phoneNumberId,
-        mockMode: stored.mockMode
-      });
-      setPhoneNumberId(stored.phoneNumberId || '');
-      setAccessToken(stored.accessToken || '');
-      setBusinessAccountId(stored.businessAccountId || '');
-      setMockMode(stored.mockMode);
+      const loadConfig = () => {
+        const stored = localCache.getWhatsAppConfig();
+        setPhoneNumberId(stored.phoneNumberId || '');
+        setAccessToken(stored.accessToken || '');
+        setBusinessAccountId(stored.businessAccountId || '');
+        setMockMode(stored.mockMode);
+      };
+
+      // Cargar inmediatamente
+      loadConfig();
+
+      // También cargar cuando waitForLoad termine (APK)
+      waitForLoad().then(loadConfig);
     }
-  }, [isOpen]); // Solo depender de isOpen, NO de config
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('💾 Guardando configuración:', {
-      phoneNumberId: phoneNumberId.trim() ? '[SET ' + phoneNumberId.trim().length + ' chars]' : '[EMPTY]',
-      accessToken: accessToken.trim() ? '[SET ' + accessToken.trim().length + ' chars]' : '[EMPTY]',
-      mockMode
-    });
     onSaveConfig({
       phoneNumberId: phoneNumberId.trim(),
       accessToken: accessToken.trim(),
@@ -64,11 +60,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       onClose();
     }, 1200);
   };
-
-  // Verificar si hay token guardado (leer de localCache directamente)
-  const storedConfig = localCache.getWhatsAppConfig();
-  const hasTokenSaved = storedConfig.accessToken && storedConfig.accessToken.length > 0;
-  const hasPhoneIdSaved = storedConfig.phoneNumberId && storedConfig.phoneNumberId.length > 0;
 
   const handleResetDemoData = () => {
     seedInitialData();
@@ -105,32 +96,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             <span>Configuración guardada correctamente.</span>
           </div>
         )}
-
-        {/* 🚦 Indicador visual del estado de la configuración */}
-        <div className={`mb-4 p-3 rounded-xl border text-xs flex items-center gap-2 ${
-          hasTokenSaved && hasPhoneIdSaved && !mockMode
-            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
-            : mockMode
-            ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500/40 text-amber-700 dark:text-amber-300'
-            : 'bg-red-50 dark:bg-red-950/60 border-red-500/40 text-red-700 dark:text-red-300'
-        }`}>
-          {hasTokenSaved && hasPhoneIdSaved && !mockMode ? (
-            <>
-              <CheckCircle className="w-4 h-4 text-emerald-500" />
-              <span>✅ API configurada - Mensajes reales activos</span>
-            </>
-          ) : mockMode ? (
-            <>
-              <Zap className="w-4 h-4 text-amber-500" />
-              <span>⚠️ Modo simulación - Los mensajes NO llegan a WhatsApp real</span>
-            </>
-          ) : (
-            <>
-              <Key className="w-4 h-4 text-red-500" />
-              <span>❌ Sin configurar - Ingresá token y desactivá simulación</span>
-            </>
-          )}
-        </div>
 
         <form onSubmit={handleSave} className="space-y-4">
           {/* Mock mode toggle */}
@@ -225,7 +190,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             </p>
           </div>
 
-          {/* Seed Data Button */}
+          {/* Footer */}
           <div className="pt-2 flex items-center justify-between">
             <button
               type="button"

@@ -5,7 +5,7 @@ import {
   createOrUpdateChat,
   markChatAsRead,
 } from '../services/firestore';
-import { localCache } from '../services/local-cache';
+import { localCache, waitForLoad } from '../services/local-cache';
 import { sanitizePhone } from '../utils/validators';
 
 export function useChats() {
@@ -19,6 +19,16 @@ export function useChats() {
     sortBy: 'recent',
   });
 
+  // 🔄 Recargar activePhone cuando memoryCache esté listo (APK)
+  useEffect(() => {
+    waitForLoad().then(() => {
+      const storedPhone = localCache.getActiveChatPhone();
+      if (storedPhone && storedPhone !== activePhone) {
+        setActivePhone(storedPhone);
+      }
+    });
+  }, []);
+
   // Subscribe to real-time Firestore chat stream
   useEffect(() => {
     setIsLoading(true);
@@ -31,7 +41,7 @@ export function useChats() {
         if (!activePhone && updatedChats.length > 0 && window.innerWidth >= 768) {
           const firstPhone = updatedChats[0].clientPhone;
           setActivePhone(firstPhone);
-          localCache.setActiveChatPhone(firstPhone);
+          localCache.setActiveChatPhone(firstPhone).catch(() => {});
         }
       },
       (err) => {
@@ -76,9 +86,9 @@ export function useChats() {
   }, [chats]);
 
   // Handler to select a chat
-  const selectChat = useCallback((phone: string | null) => {
+  const selectChat = useCallback(async (phone: string | null) => {
     setActivePhone(phone);
-    localCache.setActiveChatPhone(phone);
+    await localCache.setActiveChatPhone(phone);
     if (phone) {
       markChatAsRead(phone);
     }

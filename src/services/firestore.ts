@@ -70,13 +70,13 @@ const chatListeners = new Set<(chats: Chat[]) => void>();
 const messageListeners: Record<string, Set<(msgs: Message[]) => void>> = {};
 
 function notifyChatListeners() {
-  localCache.saveOfflineChats(mockChats);
+  localCache.saveOfflineChats(mockChats).catch(() => {});
   chatListeners.forEach((fn) => fn([...mockChats]));
 }
 
 function notifyMessageListeners(phone: string) {
   if (mockMessages[phone]) {
-    localCache.saveOfflineMessages(phone, mockMessages[phone]);
+    localCache.saveOfflineMessages(phone, mockMessages[phone]).catch(() => {});
     messageListeners[phone]?.forEach((fn) => fn([...mockMessages[phone]]));
   }
 }
@@ -239,7 +239,7 @@ export function subscribeToChats(
             };
           });
           onUpdate(chats);
-          localCache.saveOfflineChats(chats);
+          localCache.saveOfflineChats(chats).catch(() => {});
         },
         (error) => {
           handleFirestoreError(error, 'list', 'chats');
@@ -301,7 +301,7 @@ export function subscribeToMessages(
             };
           });
           onUpdate(msgs);
-          localCache.saveOfflineMessages(clientPhone, msgs);
+          localCache.saveOfflineMessages(clientPhone, msgs).catch(() => {});
         },
         (error) => {
           handleFirestoreError(error, 'list', `chats/${clientPhone}/messages`);

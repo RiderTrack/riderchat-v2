@@ -14,6 +14,7 @@ import { ConfigModal } from './ConfigModal';
 import { NewChatModal } from './NewChatModal';
 import { QuickTemplatesModal } from './QuickTemplatesModal';
 import { BroadcastModal } from './BroadcastModal';
+import { localCache, waitForLoad } from '../services/local-cache';
 
 interface LayoutProps {
   chats: Chat[];
@@ -65,10 +66,8 @@ export const Layout: React.FC<LayoutProps> = ({
   isSending = false,
 }) => {
   const [isDark, setIsDark] = useState<boolean>(() => {
-    return (
-      localStorage.getItem('riderchat_theme') === 'dark' ||
-      window.matchMedia('(prefers-color-scheme: dark)').matches
-    );
+    const theme = localCache.getTheme();
+    return theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
 
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
@@ -79,14 +78,24 @@ export const Layout: React.FC<LayoutProps> = ({
   // Simulated connection status for header (Req #10)
   const [isConnected, setIsConnected] = useState<boolean>(true);
 
+  // Recargar theme cuando memoryCache esté listo (APK)
+  useEffect(() => {
+    waitForLoad().then(() => {
+      const theme = localCache.getTheme();
+      if (theme === 'dark' || theme === 'light') {
+        setIsDark(theme === 'dark');
+      }
+    });
+  }, []);
+
   // Sync theme class on document element
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('riderchat_theme', 'dark');
+      localCache.setTheme('dark').catch(() => {});
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('riderchat_theme', 'light');
+      localCache.setTheme('light').catch(() => {});
     }
   }, [isDark]);
 

@@ -7,44 +7,25 @@ import {
   simulateIncomingCustomerMessage,
   updateMessageMetaId,
 } from '../services/firestore';
-import { localCache, onConfigLoaded } from '../services/local-cache';
+import { localCache, waitForLoad } from '../services/local-cache';
 
 export function useWhatsAppAPI() {
   const [config, setConfig] = useState<WhatsAppConfig>(() => localCache.getWhatsAppConfig());
   const [isSending, setIsSending] = useState<boolean>(false);
 
-  // 🔄 Recargar config cuando Capacitor Preferences esté disponible (APK)
-  // Esto arregla el problema de que la config se pierde al reiniciar la app
+  // 🔄 Recargar config cuando memoryCache esté listo (APK)
   useEffect(() => {
-    const unsubscribe = onConfigLoaded(() => {
-      console.log('🔄 Capacitor Preferences cargado, recargando config...');
-      const reloadedConfig = localCache.getWhatsAppConfig();
-      setConfig(reloadedConfig);
+    waitForLoad().then(() => {
+      const stored = localCache.getWhatsAppConfig();
+      setConfig(stored);
     });
-    return unsubscribe;
   }, []);
 
-  // Update WhatsApp API configuration
-  const saveConfig = useCallback((newConfig: WhatsAppConfig) => {
-    console.log('💾 saveConfig llamado con:', {
-      hasToken: !!newConfig.accessToken,
-      hasPhoneId: !!newConfig.phoneNumberId,
-      mockMode: newConfig.mockMode
-    });
+  const saveConfig = useCallback(async (newConfig: WhatsAppConfig) => {
     setConfig(newConfig);
-    localCache.saveWhatsAppConfig(newConfig);
-    // Verificar que se guardó
-    const verify = localCache.getWhatsAppConfig();
-    console.log('✅ Verificación post-save:', {
-      hasToken: !!verify.accessToken,
-      hasPhoneId: !!verify.phoneNumberId,
-      mockMode: verify.mockMode
-    });
+    await localCache.saveWhatsAppConfig(newConfig);
   }, []);
 
-  /**
-   * Main function to send text or media messages to a WhatsApp client
-   */
   const sendTextMessage = useCallback(
     async (clientPhone: string, text: string, replyToId?: string): Promise<boolean> => {
       if (!clientPhone || !text.trim()) return false;
@@ -53,7 +34,6 @@ export function useWhatsAppAPI() {
 
       const timestamp = Date.now();
 
-      // 1. Save pending message to Firestore & local state
       const newMsg: Omit<Message, 'id'> = {
         direction: 'sent',
         text: text.trim(),
@@ -63,10 +43,8 @@ export function useWhatsAppAPI() {
         replyToId,
       };
 
-      // Capturar el ID real que Firestore asigna
       const firestoreMsgId = await sendMessageToFirestore(clientPhone, newMsg);
 
-      // 2. Dispatch via Meta Cloud API
       const res = await sendWhatsAppMessage(config, {
         toPhone: clientPhone,
         type: 'text',
@@ -74,12 +52,9 @@ export function useWhatsAppAPI() {
       });
 
       if (res.success) {
-        // Update to sent (usar ID real de Firestore + ID de Meta)
         await updateMessageStatus(clientPhone, firestoreMsgId, 'sent');
-        // Guardar el metaMessageId para que el webhook pueda actualizar el estado después
         await updateMessageMetaId(clientPhone, firestoreMsgId, res.messageId || '');
 
-        // Simular delivery ticks sequence in mock mode for Rudy
         if (config.mockMode || !config.phoneNumberId) {
           setTimeout(() => {
             updateMessageStatus(clientPhone, firestoreMsgId, 'delivered');
@@ -89,7 +64,6 @@ export function useWhatsAppAPI() {
             updateMessageStatus(clientPhone, firestoreMsgId, 'read');
           }, 3500);
 
-          // Simulated customer automatic response in demo mode
           if (text.toLowerCase().includes('llegue') || text.toLowerCase().includes('puerta') || text.toLowerCase().includes('camino')) {
             setTimeout(() => {
               simulateIncomingCustomerMessage(
@@ -102,7 +76,6 @@ export function useWhatsAppAPI() {
         setIsSending(false);
         return true;
       } else {
-        // Mark as failed with error
         await updateMessageStatus(clientPhone, firestoreMsgId, 'failed', res.error || 'Falló el envío de WhatsApp');
         setIsSending(false);
         return false;
@@ -111,9 +84,6 @@ export function useWhatsAppAPI() {
     [config]
   );
 
-  /**
-   * Sends media attachment (image, audio voice note, document, location)
-   */
   const sendMediaMessage = useCallback(
     async (
       clientPhone: string,
@@ -167,9 +137,6 @@ export function useWhatsAppAPI() {
     [config]
   );
 
-  /**
-   * Retry sending a failed message
-   */
   const retryFailedMessage = useCallback(
     async (clientPhone: string, msg: Message): Promise<boolean> => {
       await updateMessageStatus(clientPhone, msg.id, 'pending');

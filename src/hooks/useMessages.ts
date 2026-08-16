@@ -5,7 +5,7 @@ import {
   sendMessageToFirestore,
   updateMessageStatus,
 } from '../services/firestore';
-import { localCache } from '../services/local-cache';
+import { localCache, waitForLoad } from '../services/local-cache';
 
 export function useMessages(clientPhone: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -15,7 +15,13 @@ export function useMessages(clientPhone: string | null) {
   // Load draft text whenever active chat changes
   useEffect(() => {
     if (clientPhone) {
+      // Cargar inmediatamente
       setDraft(localCache.getDraft(clientPhone));
+
+      // Recargar cuando memoryCache esté listo (APK)
+      waitForLoad().then(() => {
+        setDraft(localCache.getDraft(clientPhone));
+      });
     } else {
       setDraft('');
     }
@@ -26,7 +32,10 @@ export function useMessages(clientPhone: string | null) {
     (text: string) => {
       setDraft(text);
       if (clientPhone) {
-        localCache.saveDraft(clientPhone, text);
+        // Guardar async sin bloquear UI
+        localCache.saveDraft(clientPhone, text).catch(e =>
+          console.warn('Error saving draft:', e)
+        );
       }
     },
     [clientPhone]
