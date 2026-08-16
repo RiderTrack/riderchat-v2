@@ -244,20 +244,32 @@ export async function enviarPlantillaMeta(
     };
   }
 
-  // Construir parámetros del cliente
+  // 🎯 Construir parámetros del cliente SIEMPRE
+  // Aunque no tengamos datos del cliente, enviamos valores por defecto
+  const clienteData = cliente || {
+    id: 0,
+    nombre: 'Cliente',
+    cel: telefono,
+    celular: telefono,
+    telefono: telefono,
+    prod: 'Producto',
+    cobrar: 0,
+    dir: 'Dirección',
+    dist: 'Distrito',
+    st: 'pendiente'
+  };
+
+  const params = construirParametros(plantilla.name, clienteData);
   let componentes: any[] = [];
-  if (cliente) {
-    const params = construirParametros(plantilla.name, cliente);
-    if (params.length > 0) {
-      // 🎯 Método por POSICIÓN (estándar de Meta)
-      // {{customer_name}} se convierte en {{1}} internamente
-      // {{order_product}} se convierte en {{2}}, etc.
-      componentes = [{
-        type: 'body',
-        parameters: params.map(p => ({ type: 'text', text: p.value }))
-      }];
-    }
+
+  if (params.length > 0) {
+    componentes = [{
+      type: 'body',
+      parameters: params.map(p => ({ type: 'text', text: p.value }))
+    }];
   }
+
+  console.log('📦 Componentes a enviar:', JSON.stringify(componentes, null, 2));
 
   const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
 
@@ -293,12 +305,12 @@ export async function enviarPlantillaMeta(
   };
 
   try {
-    // INTENTO 1: Con parámetros del cliente
+    // Enviar CON parámetros del cliente
     if (componentes.length > 0) {
-      console.log('🔄 Intento 1: Con parámetros', componentes);
+      console.log('🔄 Enviando con parámetros:', JSON.stringify(componentes, null, 2));
       const { response, data } = await enviarRequest(componentes);
 
-      console.log('📡 Respuesta Meta (intento 1):', {
+      console.log('📡 Respuesta Meta:', {
         status: response.status,
         ok: response.ok,
         data: data
@@ -318,29 +330,17 @@ export async function enviarPlantillaMeta(
 
       console.log('❌ Error completo de Meta:', JSON.stringify(data.error, null, 2));
 
-      // Si el error es 132000 (parámetros no coinciden), intentar SIN parámetros
-      if (errorMsg.includes('132000') || errorMsg.includes('parameters does not match')) {
-        console.log('⚠️ Error 132000 - Intentando SIN parámetros...');
-      } else {
-        return { success: false, error: fullError };
-      }
+      return { success: false, error: fullError };
     }
 
-    // INTENTO 2: SIN parámetros (template fijo sin variables)
-    console.log('🔄 Intento 2: SIN parámetros');
+    // Si no hay parámetros (plantilla sin variables), enviar sin componentes
+    console.log('🔄 Enviando sin parámetros (plantilla sin variables)');
     const { response: resp2, data: data2 } = await enviarRequest([]);
-
-    console.log('📡 Respuesta Meta (intento 2):', {
-      status: resp2.status,
-      ok: resp2.ok,
-      data: data2
-    });
 
     if (resp2.ok && data2.messages?.[0]?.id) {
       return { success: true, messageId: data2.messages[0].id };
     }
 
-    // Error completo del intento 2
     const errorMsg2 = data2.error?.message || '';
     const errorCode2 = data2.error?.code || '';
     const errorDetails2 = data2.error?.error_data?.details || '';
