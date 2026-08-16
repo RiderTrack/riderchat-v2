@@ -53,11 +53,14 @@ jobs:
       - name: Install Capacitor CLI
         run: npm install -D @capacitor/cli @capacitor/core @capacitor/android @capacitor/app @capacitor/preferences @capacitor/splash-screen --legacy-peer-deps
 
-      - name: Sync Capacitor (importante para que Preferences funcione en APK)
+      - name: Sync Capacitor (importante para que Preferences y Http funcionen en APK)
         run: npx cap sync android || true
 
       - name: Add Android platform
         run: npx cap add android || true
+
+      - name: Re-sync after adding platform
+        run: npx cap sync android || true
 
       - name: Upgrade Gradle to 8.7 (fix BouncyCastle Java 21 issue)
         run: |
