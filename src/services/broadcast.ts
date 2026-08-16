@@ -104,7 +104,7 @@ export function normalizarTelefono(tel: string): string {
 
 export interface PlantillaMeta {
   name: string;
-  language: string;
+  language: string; // es_PE para español Perú
   label: string;
   descripcion: string;
   emoji: string;
@@ -112,38 +112,39 @@ export interface PlantillaMeta {
 }
 
 // Plantillas aprobadas en tu cuenta de Meta (nombres exactos)
+// IMPORTANTE: El idioma es es_PE (Español Perú), no es
 export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
   {
     name: 'inicio_ruta',
-    language: 'es',
+    language: 'es_PE',
     label: 'Inicio de Ruta',
     descripcion: 'Avisa al cliente que su pedido va en camino',
     emoji: '🚀',
   },
   {
     name: 'solicitar_ubicacion',
-    language: 'es',
+    language: 'es_PE',
     label: 'Solicitar Ubicación',
     descripcion: 'Pide al cliente su ubicación actual',
     emoji: '📍',
   },
   {
     name: 'qr_metodo_de_pago',
-    language: 'es',
+    language: 'es_PE',
     label: 'QR Método de Pago',
     descripcion: 'Envía el QR de Yape con el monto a pagar',
     emoji: '💳',
   },
   {
     name: 'eta_actualizada',
-    language: 'es',
+    language: 'es_PE',
     label: 'ETA Actualizada',
     descripcion: 'Avisa en cuántos minutos llegás',
     emoji: '⏱️',
   },
   {
     name: 'entrega_completada',
-    language: 'es',
+    language: 'es_PE',
     label: 'Entrega Completada',
     descripcion: 'Confirma que el pedido fue entregado',
     emoji: '✅',
