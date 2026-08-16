@@ -384,7 +384,7 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({
                             )}
                           </div>
                           {estado?.estado === 'fallido' && estado.error && (
-                            <div className="text-[10px] text-red-500 mt-0.5">
+                            <div className="text-[11px] text-red-600 dark:text-red-400 mt-1 p-2 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-800 break-all">
                               ❌ {estado.error}
                             </div>
                           )}

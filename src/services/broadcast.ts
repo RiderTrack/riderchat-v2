@@ -249,20 +249,17 @@ export async function enviarPlantillaMeta(
   if (cliente) {
     const params = construirParametros(plantilla.name, cliente);
     if (params.length > 0) {
-      // 🎯 FIX: Enviar parámetros con NOMBRE (no con números)
-      // Meta Cloud API v21+ soporta parámetros con nombre
+      // 🎯 Método por POSICIÓN (estándar de Meta)
+      // {{customer_name}} se convierte en {{1}} internamente
+      // {{order_product}} se convierte en {{2}}, etc.
       componentes = [{
         type: 'body',
-        parameters: params.map(p => ({
-          type: 'text',
-          text: p.value,
-          parameter_name: p.name  // ← CLAVE: nombre de la variable
-        }))
+        parameters: params.map(p => ({ type: 'text', text: p.value }))
       }];
     }
   }
 
-  const url = `https://graph.facebook.com/v21.0/${config.phoneNumberId}/messages`;
+  const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
 
   const enviarRequest = async (comps: any[]) => {
     const body: any = {
@@ -298,19 +295,34 @@ export async function enviarPlantillaMeta(
   try {
     // INTENTO 1: Con parámetros del cliente
     if (componentes.length > 0) {
-      console.log('🔄 Intento 1: Con parámetros');
+      console.log('🔄 Intento 1: Con parámetros', componentes);
       const { response, data } = await enviarRequest(componentes);
+
+      console.log('📡 Respuesta Meta (intento 1):', {
+        status: response.status,
+        ok: response.ok,
+        data: data
+      });
 
       if (response.ok && data.messages?.[0]?.id) {
         return { success: true, messageId: data.messages[0].id };
       }
 
+      // 🎯 Mostrar el error COMPLETO de Meta en la UI
       const errorMsg = data.error?.message || '';
+      const errorCode = data.error?.code || '';
+      const errorSubcode = data.error?.error_subcode || '';
+      const errorDetails = data.error?.error_data?.details || '';
+
+      const fullError = `[${errorCode}] ${errorMsg}${errorSubcode ? ' (sub:' + errorSubcode + ')' : ''}${errorDetails ? ' | ' + errorDetails : ''}`;
+
+      console.log('❌ Error completo de Meta:', JSON.stringify(data.error, null, 2));
+
       // Si el error es 132000 (parámetros no coinciden), intentar SIN parámetros
       if (errorMsg.includes('132000') || errorMsg.includes('parameters does not match')) {
         console.log('⚠️ Error 132000 - Intentando SIN parámetros...');
       } else {
-        return { success: false, error: errorMsg };
+        return { success: false, error: fullError };
       }
     }
 
@@ -318,13 +330,25 @@ export async function enviarPlantillaMeta(
     console.log('🔄 Intento 2: SIN parámetros');
     const { response: resp2, data: data2 } = await enviarRequest([]);
 
+    console.log('📡 Respuesta Meta (intento 2):', {
+      status: resp2.status,
+      ok: resp2.ok,
+      data: data2
+    });
+
     if (resp2.ok && data2.messages?.[0]?.id) {
       return { success: true, messageId: data2.messages[0].id };
     }
 
+    // Error completo del intento 2
+    const errorMsg2 = data2.error?.message || '';
+    const errorCode2 = data2.error?.code || '';
+    const errorDetails2 = data2.error?.error_data?.details || '';
+    const fullError2 = `[${errorCode2}] ${errorMsg2}${errorDetails2 ? ' | ' + errorDetails2 : ''}`;
+
     return {
       success: false,
-      error: data2.error?.message || `HTTP ${resp2.status}`,
+      error: fullError2 || `HTTP ${resp2.status}`,
     };
   } catch (err: any) {
     return {
