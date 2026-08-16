@@ -35,10 +35,16 @@ try {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   db = getFirestore(app);
   isFirestoreAvailable = true;
+  console.log('✅ Firebase inicializado correctamente');
+  console.log('📊 Project ID:', firebaseConfig.projectId);
 } catch (e) {
-  console.warn('Firestore initialization fallback to local mock store mode:', e);
+  console.error('❌ Error inicializando Firebase:', e);
   isFirestoreAvailable = false;
 }
+
+// Detectar ambiente
+const isAPK = typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor?.isNative;
+console.log(isAPK ? '📱 Ambiente: APK nativo' : '🌐 Ambiente: Web');
 
 export { db, isFirestoreAvailable };
 
@@ -53,6 +59,19 @@ function handleFirestoreError(
     path,
   };
   console.error('Firestore Error:', JSON.stringify(errInfo));
+
+  // 🐛 FIX: Mostrar errores de Firestore en la UI para debug en APK
+  const errorCode = (error as any)?.code || 'unknown';
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error(`❌ Firestore [${operationType}] ${path}:`, errorCode, errorMessage);
+
+  // Si es error de permisos o CORS, mostrar alerta
+  if (errorCode === 'permission-denied' || errorCode === 'unauthenticated') {
+    console.error('🚫 Permisos denegados. Revisa las reglas de Firestore.');
+  }
+  if (errorMessage.includes('Failed to fetch') || errorMessage.includes('Network Error')) {
+    console.error('🌐 Error de red. El WebView puede estar bloqueando Firestore.');
+  }
 }
 
 // -------------------------------------------------------------
@@ -70,13 +89,13 @@ const chatListeners = new Set<(chats: Chat[]) => void>();
 const messageListeners: Record<string, Set<(msgs: Message[]) => void>> = {};
 
 function notifyChatListeners() {
-  localCache.saveOfflineChats(mockChats).catch(() => {});
+  localCache.saveOfflineChats(mockChats);
   chatListeners.forEach((fn) => fn([...mockChats]));
 }
 
 function notifyMessageListeners(phone: string) {
   if (mockMessages[phone]) {
-    localCache.saveOfflineMessages(phone, mockMessages[phone]).catch(() => {});
+    localCache.saveOfflineMessages(phone, mockMessages[phone]);
     messageListeners[phone]?.forEach((fn) => fn([...mockMessages[phone]]));
   }
 }
@@ -214,6 +233,7 @@ export function subscribeToChats(
   onUpdate: (chats: Chat[]) => void,
   onError?: (err: Error) => void
 ): () => void {
+  console.log('📡 subscribeToChats - Iniciando. db:', !!db, 'available:', isFirestoreAvailable);
   if (db) {
     try {
       const chatsRef = collection(db, 'chats');
@@ -239,7 +259,7 @@ export function subscribeToChats(
             };
           });
           onUpdate(chats);
-          localCache.saveOfflineChats(chats).catch(() => {});
+          localCache.saveOfflineChats(chats);
         },
         (error) => {
           handleFirestoreError(error, 'list', 'chats');
@@ -301,7 +321,7 @@ export function subscribeToMessages(
             };
           });
           onUpdate(msgs);
-          localCache.saveOfflineMessages(clientPhone, msgs).catch(() => {});
+          localCache.saveOfflineMessages(clientPhone, msgs);
         },
         (error) => {
           handleFirestoreError(error, 'list', `chats/${clientPhone}/messages`);

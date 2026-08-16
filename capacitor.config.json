@@ -6,12 +6,15 @@
     "androidScheme": "https",
     "cleartext": true,
     "allowNavigation": [
-      "graph.facebook.com",
-      "*.facebook.com",
-      "*.firebasestorage.googleapis.com",
       "*.firebaseio.com",
+      "*.firebasedatabase.app",
+      "*.firebasestorage.googleapis.com",
+      "*.firebase.com",
       "*.googleapis.com",
-      "firestore.googleapis.com"
+      "firestore.googleapis.com",
+      "*.google.com",
+      "graph.facebook.com",
+      "*.facebook.com"
     ]
   },
   "android": {
