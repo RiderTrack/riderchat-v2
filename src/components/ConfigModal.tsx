@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Settings, ShieldCheck, Database, Zap, Key, Phone, RefreshCw, CheckCircle } from 'lucide-react';
 import { WhatsAppConfig } from '../types/chat';
 import { seedInitialData, isFirestoreAvailable } from '../services/firestore';
+import { localCache } from '../services/local-cache';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -16,30 +17,38 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   config,
   onSaveConfig,
 }) => {
-  const [phoneNumberId, setPhoneNumberId] = useState<string>(config.phoneNumberId || '');
-  const [accessToken, setAccessToken] = useState<string>(config.accessToken || '');
-  const [businessAccountId, setBusinessAccountId] = useState<string>(config.businessAccountId || '');
-  const [mockMode, setMockMode] = useState<boolean>(config.mockMode);
+  // 🔥 FIX: Leer DIRECTO de localCache (no del prop config que puede estar desactualizado)
+  // Esto arregla el problema de que el modal muestra config vieja
+  const [phoneNumberId, setPhoneNumberId] = useState<string>('');
+  const [accessToken, setAccessToken] = useState<string>('');
+  const [businessAccountId, setBusinessAccountId] = useState<string>('');
+  const [mockMode, setMockMode] = useState<boolean>(true);
 
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
-  // 🐛 FIX: Sincronizar los campos cuando se abre el modal o cambia la config
-  // Sin esto, los campos aparecen vacíos aunque ya se haya guardado
+  // 🐛 FIX: Cuando se abre el modal, leer DIRECTO de localCache
+  // No depender del prop config que puede estar desactualizado
   useEffect(() => {
     if (isOpen) {
-      setPhoneNumberId(config.phoneNumberId || '');
-      setAccessToken(config.accessToken || '');
-      setBusinessAccountId(config.businessAccountId || '');
-      setMockMode(config.mockMode);
+      const stored = localCache.getWhatsAppConfig();
+      console.log('📖 ConfigModal abierto - leyendo de localCache:', {
+        hasToken: !!stored.accessToken,
+        hasPhoneId: !!stored.phoneNumberId,
+        mockMode: stored.mockMode
+      });
+      setPhoneNumberId(stored.phoneNumberId || '');
+      setAccessToken(stored.accessToken || '');
+      setBusinessAccountId(stored.businessAccountId || '');
+      setMockMode(stored.mockMode);
     }
-  }, [isOpen, config]);
+  }, [isOpen]); // Solo depender de isOpen, NO de config
 
   if (!isOpen) return null;
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     console.log('💾 Guardando configuración:', {
-      phoneNumberId: phoneNumberId.trim() ? '[SET]' : '[EMPTY]',
+      phoneNumberId: phoneNumberId.trim() ? '[SET ' + phoneNumberId.trim().length + ' chars]' : '[EMPTY]',
       accessToken: accessToken.trim() ? '[SET ' + accessToken.trim().length + ' chars]' : '[EMPTY]',
       mockMode
     });
@@ -56,9 +65,10 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
     }, 1200);
   };
 
-  // Verificar si hay token guardado
-  const hasTokenSaved = config.accessToken && config.accessToken.length > 0;
-  const hasPhoneIdSaved = config.phoneNumberId && config.phoneNumberId.length > 0;
+  // Verificar si hay token guardado (leer de localCache directamente)
+  const storedConfig = localCache.getWhatsAppConfig();
+  const hasTokenSaved = storedConfig.accessToken && storedConfig.accessToken.length > 0;
+  const hasPhoneIdSaved = storedConfig.phoneNumberId && storedConfig.phoneNumberId.length > 0;
 
   const handleResetDemoData = () => {
     seedInitialData();

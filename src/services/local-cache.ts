@@ -143,7 +143,11 @@ export const DEFAULT_WA_CONFIG: WhatsAppConfig = {
   phoneNumberId: '1272517762604297',
   accessToken: '',
   businessAccountId: '',
-  mockMode: true, // Inicia en modo simulación hasta que Rudy ingrese el token
+  // 🚨 CAMBIO: mockMode = false por defecto
+  // Antes era true, lo que causaba que los mensajes no llegaran a WhatsApp real
+  // Si no hay token, los mensajes van a fallar (lo cual es correcto)
+  // Si hay token, los mensajes se envían de verdad
+  mockMode: false,
 };
 
 export const localCache = {
