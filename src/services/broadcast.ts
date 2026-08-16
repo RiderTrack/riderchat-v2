@@ -99,6 +99,7 @@ export function normalizarTelefono(tel: string): string {
 
 // ═══════════════════════════════════════════════════════════
 // 📋 PLANTILLAS APROBADAS - Meta Cloud API
+// Nombres EXACTOS como están en Meta Developers
 // ═══════════════════════════════════════════════════════════
 
 export interface PlantillaMeta {
@@ -110,7 +111,7 @@ export interface PlantillaMeta {
   componentes?: any[];
 }
 
-// Plantillas aprobadas en tu cuenta de Meta
+// Plantillas aprobadas en tu cuenta de Meta (nombres exactos)
 export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
   {
     name: 'inicio_ruta',
@@ -125,6 +126,27 @@ export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
     label: 'Solicitar Ubicación',
     descripcion: 'Pide al cliente su ubicación actual',
     emoji: '📍',
+  },
+  {
+    name: 'qr_metodo_de_pago',
+    language: 'es',
+    label: 'QR Método de Pago',
+    descripcion: 'Envía el QR de Yape con el monto a pagar',
+    emoji: '💳',
+  },
+  {
+    name: 'eta_actualizada',
+    language: 'es',
+    label: 'ETA Actualizada',
+    descripcion: 'Avisa en cuántos minutos llegás',
+    emoji: '⏱️',
+  },
+  {
+    name: 'entrega_completada',
+    language: 'es',
+    label: 'Entrega Completada',
+    descripcion: 'Confirma que el pedido fue entregado',
+    emoji: '✅',
   },
 ];
 
