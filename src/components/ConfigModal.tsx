@@ -38,6 +38,11 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('💾 Guardando configuración:', {
+      phoneNumberId: phoneNumberId.trim() ? '[SET]' : '[EMPTY]',
+      accessToken: accessToken.trim() ? '[SET ' + accessToken.trim().length + ' chars]' : '[EMPTY]',
+      mockMode
+    });
     onSaveConfig({
       phoneNumberId: phoneNumberId.trim(),
       accessToken: accessToken.trim(),
@@ -50,6 +55,10 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
       onClose();
     }, 1200);
   };
+
+  // Verificar si hay token guardado
+  const hasTokenSaved = config.accessToken && config.accessToken.length > 0;
+  const hasPhoneIdSaved = config.phoneNumberId && config.phoneNumberId.length > 0;
 
   const handleResetDemoData = () => {
     seedInitialData();
@@ -86,6 +95,32 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             <span>Configuración guardada correctamente.</span>
           </div>
         )}
+
+        {/* 🚦 Indicador visual del estado de la configuración */}
+        <div className={`mb-4 p-3 rounded-xl border text-xs flex items-center gap-2 ${
+          hasTokenSaved && hasPhoneIdSaved && !mockMode
+            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
+            : mockMode
+            ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500/40 text-amber-700 dark:text-amber-300'
+            : 'bg-red-50 dark:bg-red-950/60 border-red-500/40 text-red-700 dark:text-red-300'
+        }`}>
+          {hasTokenSaved && hasPhoneIdSaved && !mockMode ? (
+            <>
+              <CheckCircle className="w-4 h-4 text-emerald-500" />
+              <span>✅ API configurada - Mensajes reales activos</span>
+            </>
+          ) : mockMode ? (
+            <>
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span>⚠️ Modo simulación - Los mensajes NO llegan a WhatsApp real</span>
+            </>
+          ) : (
+            <>
+              <Key className="w-4 h-4 text-red-500" />
+              <span>❌ Sin configurar - Ingresá token y desactivá simulación</span>
+            </>
+          )}
+        </div>
 
         <form onSubmit={handleSave} className="space-y-4">
           {/* Mock mode toggle */}
