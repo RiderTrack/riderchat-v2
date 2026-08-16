@@ -1,10 +1,12 @@
 import { Chat, Message, QuickTemplate, WhatsAppConfig } from '../types/chat';
 
 // ═══════════════════════════════════════════════════════════
-// 🔧 SISTEMA DE ALMACENAMIENTO HÍBRIDO
+// 🔧 SISTEMA DE ALMACENAMIENTO HÍBRIDO v2 (FIX DEFINITIVO)
 // - En APK (Capacitor): usa @capacitor/preferences (nativo, persistente)
 // - En Web (navegador): usa localStorage (funciona normal)
-// Esto arregla el bug del token que se borraba en el APK
+// - SIEMPRE guarda en localStorage como backup inmediato
+// - En APK, también guarda en Capacitor Preferences (persistente)
+// - Al iniciar la app en APK, migra de Preferences a localStorage
 // ═══════════════════════════════════════════════════════════
 
 const KEYS = {
@@ -21,69 +23,81 @@ const KEYS = {
 // Detectar si estamos en APK (Capacitor disponible)
 const isNativeAPK = typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor?.isNative;
 
-// Import dinámico de Capacitor Preferences (solo en APK)
+// Plugin de Capacitor Preferences (cargado async)
 let PreferencesPlugin: any = null;
+let preferencesLoaded = false;
+
+// Sistema de eventos para notificar cuando los datos estén cargados
+type ConfigChangeListener = () => void;
+const configChangeListeners: Set<ConfigChangeListener> = new Set();
+
+export function onConfigLoaded(listener: ConfigChangeListener): () => void {
+  configChangeListeners.add(listener);
+  return () => configChangeListeners.delete(listener);
+}
+
+function notifyConfigLoaded() {
+  configChangeListeners.forEach(listener => {
+    try { listener(); } catch (e) { console.warn('Error in config listener:', e); }
+  });
+}
+
+// Cargar Capacitor Preferences (solo en APK)
 if (isNativeAPK) {
-  try {
-    // @ts-ignore - import dinámico solo en APK
-    import('@capacitor/preferences').then(mod => {
+  console.log('📱 APK detectado - cargando Capacitor Preferences...');
+  import('@capacitor/preferences')
+    .then(mod => {
       PreferencesPlugin = mod.Preferences;
-      console.log('✅ Capacitor Preferences cargado (APK nativo)');
-      // Precargar cache cuando el plugin esté disponible
-      preloadCache();
-    }).catch(e => {
-      console.warn('⚠️ No se pudo cargar Capacitor Preferences, usando localStorage:', e);
+      preferencesLoaded = true;
+      console.log('✅ Capacitor Preferences cargado');
+      // Migrar datos de Preferences a localStorage
+      migrateFromPreferences();
+    })
+    .catch(e => {
+      console.warn('⚠️ No se pudo cargar Capacitor Preferences:', e);
+      preferencesLoaded = true; // Marcar como cargado para no quedarse colgado
     });
-  } catch (e) {
-    console.warn('⚠️ Capacitor Preferences no disponible, usando localStorage');
-  }
+} else {
+  preferencesLoaded = true;
 }
 
-// Función helper para guardar (async en APK, sync en web)
-async function setItem(key: string, value: string): Promise<void> {
+// Migrar datos de Capacitor Preferences a localStorage al iniciar
+async function migrateFromPreferences(): Promise<void> {
+  if (!PreferencesPlugin) return;
   try {
-    if (isNativeAPK && PreferencesPlugin) {
-      await PreferencesPlugin.set({ key, value });
-    } else {
-      localStorage.setItem(key, value);
-    }
-    // Actualizar cache en memoria
-    memoryCache[key] = value;
-  } catch (e) {
-    console.warn(`Error guardando ${key}:`, e);
-    try { localStorage.setItem(key, value); } catch {}
-  }
-}
-
-// Función helper para leer (async en APK, sync en web)
-async function getItem(key: string): Promise<string | null> {
-  try {
-    if (isNativeAPK && PreferencesPlugin) {
+    for (const key of Object.values(KEYS)) {
       const result = await PreferencesPlugin.get({ key });
-      return result.value;
-    } else {
-      return localStorage.getItem(key);
+      if (result.value && !localStorage.getItem(key)) {
+        // Solo migrar si localStorage no tiene el valor (prioridad: localStorage)
+        localStorage.setItem(key, result.value);
+        console.log('📦 Migrado de Preferences a localStorage:', key);
+      }
     }
+    console.log('✅ Migración completada');
+    // Notificar a los hooks que la config está disponible
+    notifyConfigLoaded();
   } catch (e) {
-    console.warn(`Error leyendo ${key}:`, e);
-    try { return localStorage.getItem(key); } catch { return null; }
+    console.warn('Error migrando datos:', e);
+    notifyConfigLoaded(); // Notificar igual para no quedarse colgado
   }
 }
 
-// Cache en memoria para lecturas síncronas (compatible con código existente)
-const memoryCache: { [key: string]: string | null } = {};
-
-// Cargar cache desde almacenamiento al iniciar (solo en APK)
-async function preloadCache(): Promise<void> {
+// Función helper para guardar en AMBOS storage (sync localStorage + async Preferences)
+async function persistItem(key: string, value: string): Promise<void> {
+  // 1. Guardar en localStorage SIEMPRE (sync, inmediato)
   try {
-    const keys = Object.values(KEYS);
-    for (const key of keys) {
-      const value = await getItem(key);
-      memoryCache[key] = value;
-    }
-    console.log('✅ Cache precargado desde almacenamiento nativo');
+    localStorage.setItem(key, value);
   } catch (e) {
-    console.warn('Error precargando cache:', e);
+    console.warn(`Error guardando en localStorage ${key}:`, e);
+  }
+
+  // 2. En APK, también guardar en Capacitor Preferences (async, persistente)
+  if (isNativeAPK && PreferencesPlugin) {
+    try {
+      await PreferencesPlugin.set({ key, value });
+    } catch (e) {
+      console.warn(`Error guardando en Preferences ${key}:`, e);
+    }
   }
 }
 
@@ -145,8 +159,14 @@ export const localCache = {
     try {
       if (phone) {
         localStorage.setItem(KEYS.ACTIVE_CHAT, phone);
+        if (isNativeAPK && PreferencesPlugin) {
+          PreferencesPlugin.set({ key: KEYS.ACTIVE_CHAT, value: phone }).catch(() => {});
+        }
       } else {
         localStorage.removeItem(KEYS.ACTIVE_CHAT);
+        if (isNativeAPK && PreferencesPlugin) {
+          PreferencesPlugin.remove({ key: KEYS.ACTIVE_CHAT }).catch(() => {});
+        }
       }
     } catch (e) {
       console.warn('LocalStorage error setting active chat', e);
@@ -173,7 +193,11 @@ export const localCache = {
       } else {
         delete drafts[phone];
       }
-      localStorage.setItem(KEYS.DRAFTS, JSON.stringify(drafts));
+      const jsonStr = JSON.stringify(drafts);
+      localStorage.setItem(KEYS.DRAFTS, jsonStr);
+      if (isNativeAPK && PreferencesPlugin) {
+        PreferencesPlugin.set({ key: KEYS.DRAFTS, value: jsonStr }).catch(() => {});
+      }
     } catch (e) {
       console.warn('LocalStorage error saving draft', e);
     }
@@ -191,50 +215,83 @@ export const localCache = {
   },
   saveQuickTemplates(templates: QuickTemplate[]): void {
     try {
-      localStorage.setItem(KEYS.QUICK_TEMPLATES, JSON.stringify(templates));
+      const jsonStr = JSON.stringify(templates);
+      localStorage.setItem(KEYS.QUICK_TEMPLATES, jsonStr);
+      if (isNativeAPK && PreferencesPlugin) {
+        PreferencesPlugin.set({ key: KEYS.QUICK_TEMPLATES, value: jsonStr }).catch(() => {});
+      }
     } catch (e) {
       console.warn('LocalStorage error saving templates', e);
     }
   },
 
-  // WhatsApp Meta Cloud API Config
+  // ═══════════════════════════════════════════════════════════
+  // 🔑 WHATSAPP CONFIG - La parte más importante
+  // ═══════════════════════════════════════════════════════════
   getWhatsAppConfig(): WhatsAppConfig {
     try {
-      // En APK: usar cache en memoria (precargado al inicio)
-      // En Web: usar localStorage directamente
-      let saved: string | null = null;
-      if (isNativeAPK) {
-        saved = memoryCache[KEYS.WA_CONFIG] || null;
-      } else {
-        saved = localStorage.getItem(KEYS.WA_CONFIG);
-      }
+      // Leer de localStorage (SIEMPRE disponible, sync)
+      const saved = localStorage.getItem(KEYS.WA_CONFIG);
       if (saved) {
         const parsed = JSON.parse(saved);
+        console.log('📖 Config leída de localStorage:', {
+          hasToken: !!(parsed.accessToken),
+          hasPhoneId: !!(parsed.phoneNumberId),
+          mockMode: parsed.mockMode
+        });
         return { ...DEFAULT_WA_CONFIG, ...parsed };
       }
+      // Si no hay en localStorage, devolver default
+      console.log('📖 No hay config guardada, usando default');
+      return DEFAULT_WA_CONFIG;
     } catch (e) {
       console.warn('Failed reading WhatsApp config', e);
+      return DEFAULT_WA_CONFIG;
     }
-    return DEFAULT_WA_CONFIG;
   },
+
   saveWhatsAppConfig(config: WhatsAppConfig): void {
     try {
       const jsonStr = JSON.stringify(config);
-      // En APK: guardar en Capacitor Preferences (nativo, persistente)
-      // En Web: guardar en localStorage
-      setItem(KEYS.WA_CONFIG, jsonStr); // async, no esperamos
-      // También guardar en localStorage como backup inmediato
-      try { localStorage.setItem(KEYS.WA_CONFIG, jsonStr); } catch {}
-      console.log('✅ Config guardada en almacenamiento persistente');
+      console.log('💾 Guardando config:', {
+        hasToken: !!config.accessToken,
+        hasPhoneId: !!config.phoneNumberId,
+        mockMode: config.mockMode,
+        jsonLength: jsonStr.length
+      });
+
+      // 1. Guardar en localStorage SIEMPRE (sync, inmediato)
+      localStorage.setItem(KEYS.WA_CONFIG, jsonStr);
+
+      // 2. En APK, también guardar en Capacitor Preferences (async, persistente)
+      if (isNativeAPK && PreferencesPlugin) {
+        PreferencesPlugin.set({ key: KEYS.WA_CONFIG, value: jsonStr })
+          .then(() => console.log('✅ Config guardada en Preferences (persistente)'))
+          .catch(e => console.warn('Error guardando en Preferences:', e));
+      } else if (isNativeAPK) {
+        console.warn('⚠️ PreferencesPlugin no disponible todavía, solo se guardó en localStorage');
+      }
+
+      // 3. Verificar que se guardó correctamente
+      const verify = localStorage.getItem(KEYS.WA_CONFIG);
+      if (verify === jsonStr) {
+        console.log('✅ Verificación OK: config guardada correctamente en localStorage');
+      } else {
+        console.error('❌ Verificación FALLÓ: la config no se guardó en localStorage');
+      }
     } catch (e) {
-      console.warn('LocalStorage error saving WhatsApp config', e);
+      console.error('❌ Error CRÍTICO guardando WhatsApp config:', e);
     }
   },
 
   // Offline Cache for Chats
   saveOfflineChats(chats: Chat[]): void {
     try {
-      localStorage.setItem(KEYS.OFFLINE_CHATS, JSON.stringify(chats));
+      const jsonStr = JSON.stringify(chats);
+      localStorage.setItem(KEYS.OFFLINE_CHATS, jsonStr);
+      if (isNativeAPK && PreferencesPlugin) {
+        PreferencesPlugin.set({ key: KEYS.OFFLINE_CHATS, value: jsonStr }).catch(() => {});
+      }
     } catch (e) {
       console.warn('Error saving offline chats', e);
     }
@@ -252,7 +309,12 @@ export const localCache = {
   // Offline Cache for Messages by Chat Phone
   saveOfflineMessages(phone: string, messages: Message[]): void {
     try {
-      localStorage.setItem(`${KEYS.OFFLINE_MESSAGES_PREFIX}${phone}`, JSON.stringify(messages));
+      const key = `${KEYS.OFFLINE_MESSAGES_PREFIX}${phone}`;
+      const jsonStr = JSON.stringify(messages);
+      localStorage.setItem(key, jsonStr);
+      if (isNativeAPK && PreferencesPlugin) {
+        PreferencesPlugin.set({ key, value: jsonStr }).catch(() => {});
+      }
     } catch (e) {
       console.warn(`Error saving offline messages for ${phone}`, e);
     }

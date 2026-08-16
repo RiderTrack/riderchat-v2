@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Message, MessageMedia, WhatsAppConfig } from '../types/chat';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import {
@@ -7,16 +7,39 @@ import {
   simulateIncomingCustomerMessage,
   updateMessageMetaId,
 } from '../services/firestore';
-import { localCache } from '../services/local-cache';
+import { localCache, onConfigLoaded } from '../services/local-cache';
 
 export function useWhatsAppAPI() {
   const [config, setConfig] = useState<WhatsAppConfig>(() => localCache.getWhatsAppConfig());
   const [isSending, setIsSending] = useState<boolean>(false);
 
+  // 🔄 Recargar config cuando Capacitor Preferences esté disponible (APK)
+  // Esto arregla el problema de que la config se pierde al reiniciar la app
+  useEffect(() => {
+    const unsubscribe = onConfigLoaded(() => {
+      console.log('🔄 Capacitor Preferences cargado, recargando config...');
+      const reloadedConfig = localCache.getWhatsAppConfig();
+      setConfig(reloadedConfig);
+    });
+    return unsubscribe;
+  }, []);
+
   // Update WhatsApp API configuration
   const saveConfig = useCallback((newConfig: WhatsAppConfig) => {
+    console.log('💾 saveConfig llamado con:', {
+      hasToken: !!newConfig.accessToken,
+      hasPhoneId: !!newConfig.phoneNumberId,
+      mockMode: newConfig.mockMode
+    });
     setConfig(newConfig);
     localCache.saveWhatsAppConfig(newConfig);
+    // Verificar que se guardó
+    const verify = localCache.getWhatsAppConfig();
+    console.log('✅ Verificación post-save:', {
+      hasToken: !!verify.accessToken,
+      hasPhoneId: !!verify.phoneNumberId,
+      mockMode: verify.mockMode
+    });
   }, []);
 
   /**
