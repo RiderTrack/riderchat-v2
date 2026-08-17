@@ -160,19 +160,23 @@ export const PLANTILLAS_BOTONES_RAPIDOS: PlantillaMeta[] = PLANTILLAS_APROBADAS.
 
 // ═══════════════════════════════════════════════════════════
 // 🖼️ CONFIGURACIÓN DE HEADERS DE PLANTILLAS
-// Algunas plantillas tienen header de IMAGEN que debemos enviar
+// Cada plantilla tiene su propia imagen de header
 // ═══════════════════════════════════════════════════════════
 
-// URL pública del logo MATE en Firebase Storage
-const MATE_LOGO_URL = 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fmate_logo.png?alt=media';
+// URLs públicas en Firebase Storage
+const LOGOS = {
+  MATE: 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fmate_logo.png?alt=media',
+  QR_YAPE: 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fqr_yape.jpg?alt=media',
+  GRACIAS_COMPRA: 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fgracias_compra.png?alt=media',
+};
 
-// Plantillas que tienen header de imagen
+// Plantillas que tienen header de imagen y su URL correspondiente
 const PLANTILLAS_CON_HEADER_IMAGEN: { [key: string]: string } = {
-  'inicio_ruta': MATE_LOGO_URL,
-  'solicitar_ubicacion': MATE_LOGO_URL,
-  'qr_metodo_de_pago': MATE_LOGO_URL,
+  'inicio_ruta': LOGOS.MATE,
+  'solicitar_ubicacion': LOGOS.MATE,
+  'qr_metodo_de_pago': LOGOS.QR_YAPE,           // ← QR de Yape
+  'entrega_completada': LOGOS.GRACIAS_COMPRA,   // ← Gracias por tu compra
   // eta_actualizada tiene header de TEXTO, no imagen
-  // entrega_completada: confirmar si tiene header
 };
 
 /**
