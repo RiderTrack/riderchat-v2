@@ -146,7 +146,31 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({
         [tel]: { telefono: tel, estado: 'enviando' },
       }));
 
-      const resultado = await enviarPlantillaMeta(config, tel, plantillaSeleccionada);
+      // 🎯 Buscar los datos del cliente para enviar parámetros
+      // Normalizar ambos teléfonos para que coincidan (con o sin prefijo 51)
+      const telSeleccionado = normalizarTelefono(tel);
+
+      console.log('🔍 Buscando cliente para teléfono normalizado:', telSeleccionado);
+      console.log('📋 Clientes disponibles:', clientes.map(c => ({
+        nombre: c.nombre,
+        telOriginal: c.cel || c.celular || c.telefono,
+        telNormalizado: normalizarTelefono(c.cel || c.celular || c.telefono || '')
+      })));
+
+      const clienteActual = clientes.find((c) => {
+        const telCliente = normalizarTelefono(c.cel || c.celular || c.telefono || '');
+        return telCliente === telSeleccionado;
+      });
+
+      console.log('👤 Cliente encontrado:', clienteActual ? {
+        nombre: clienteActual.nombre,
+        prod: clienteActual.prod,
+        cobrar: clienteActual.cobrar,
+        dir: clienteActual.dir,
+        dist: clienteActual.dist
+      } : 'NO ENCONTRADO - usando valores por defecto');
+
+      const resultado = await enviarPlantillaMeta(config, tel, plantillaSeleccionada, clienteActual);
 
       if (resultado.success) {
         enviados++;
