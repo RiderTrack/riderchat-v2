@@ -265,7 +265,11 @@ export async function enviarPlantillaMeta(
   if (params.length > 0) {
     componentes = [{
       type: 'body',
-      parameters: params.map(p => ({ type: 'text', text: p.value }))
+      parameters: params.map(p => ({
+        type: 'text',
+        text: p.value,
+        parameter_name: p.name  // ← OBLIGATORIO: Meta lo requiere
+      }))
     }];
   }
 
