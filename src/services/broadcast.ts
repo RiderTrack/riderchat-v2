@@ -74,14 +74,51 @@ export function subscribeToRutaActiva(
 
 /**
  * Obtiene los clientes de la ruta activa con teléfono válido
+ * ORDENADOS según el orden optimizado de RiderTrack
  */
 export function getClientesDeRuta(ruta: RutaActiva | null): RutaCliente[] {
   if (!ruta || !ruta.clientes) return [];
-  return ruta.clientes.filter((c) => {
+
+  // Filtrar clientes con teléfono válido
+  const clientesValidos = ruta.clientes.filter((c) => {
     const tel = c.cel || c.celular || c.telefono || '';
     const limpio = String(tel).replace(/\D/g, '');
     return limpio.length >= 9;
   });
+
+  // 🎯 ORDENAR según el orden_optimo de la ruta
+  // RiderTrack guarda el orden optimizado en ruta_activa.orden_optimo
+  // que es un array de IDs o índices
+  if (ruta.ruta_activa?.orden_optimo && Array.isArray(ruta.ruta_activa.orden_optimo)) {
+    console.log('📍 Orden optimizado encontrado:', ruta.ruta_activa.orden_optimo);
+
+    // Crear un mapa de posición para cada cliente
+    const ordenMap = new Map<string, number>();
+    ruta.ruta_activa.orden_optimo.forEach((id, index) => {
+      ordenMap.set(String(id), index);
+    });
+
+    // Ordenar clientes según el orden_optimo
+    return clientesValidos.sort((a, b) => {
+      const posA = ordenMap.get(String(a.id)) ?? 9999;
+      const posB = ordenMap.get(String(b.id)) ?? 9999;
+      return posA - posB;
+    });
+  }
+
+  // 🎯 FALLBACK: Si no hay orden_optimo, usar el campo "num" si existe
+  const tieneNum = clientesValidos.some(c => (c as any).num !== undefined);
+  if (tieneNum) {
+    console.log('⚠️ No se encontró orden_optimo, ordenando por campo num');
+    return clientesValidos.sort((a, b) => {
+      const numA = (a as any).num || 0;
+      const numB = (b as any).num || 0;
+      return numA - numB;
+    });
+  }
+
+  console.log('⚠️ No se encontró orden_optimo ni num, usando orden original');
+  return clientesValidos;
 }
 
 /**
@@ -147,49 +184,12 @@ export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
   },
 ];
 
-// Plantillas que se muestran en el Broadcast masivo (solo 2)
-// Las demás se usan como botones rápidos en cada chat individual
-export const PLANTILLAS_BROADCAST: PlantillaMeta[] = PLANTILLAS_APROBADAS.filter(
-  p => p.name === 'inicio_ruta' || p.name === 'solicitar_ubicacion'
-);
-
-// Plantillas para botones rápidos en cada chat (excluyendo las de broadcast)
-export const PLANTILLAS_BOTONES_RAPIDOS: PlantillaMeta[] = PLANTILLAS_APROBADAS.filter(
-  p => p.name !== 'inicio_ruta' && p.name !== 'solicitar_ubicacion'
-);
-
-// ═══════════════════════════════════════════════════════════
-// 🖼️ CONFIGURACIÓN DE HEADERS DE PLANTILLAS
-// Cada plantilla tiene su propia imagen de header
-// ═══════════════════════════════════════════════════════════
-
-// URLs públicas en Firebase Storage
-const LOGOS = {
-  MATE: 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fmate_logo.png?alt=media',
-  QR_YAPE: 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fqr_yape.jpg?alt=media',
-  GRACIAS_COMPRA: 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fgracias_compra.png?alt=media',
-};
-
-// Plantillas que tienen header de imagen y su URL correspondiente
-const PLANTILLAS_CON_HEADER_IMAGEN: { [key: string]: string } = {
-  'inicio_ruta': LOGOS.MATE,
-  'solicitar_ubicacion': LOGOS.MATE,
-  'qr_metodo_de_pago': LOGOS.QR_YAPE,           // ← QR de Yape
-  'entrega_completada': LOGOS.GRACIAS_COMPRA,   // ← Gracias por tu compra
-  // eta_actualizada tiene header de TEXTO, no imagen
-};
-
 /**
  * Construye los parámetros para cada plantilla usando variables CON NOMBRE
  * Meta Cloud API soporta variables con nombre ({{customer_name}})
  * cuando se envían como objects en lugar de strings
  */
-function construirParametros(
-  nombrePlantilla: string,
-  cliente: RutaCliente,
-  deliveryNumber?: number,
-  totalDeliveries?: number
-): { name: string; value: string }[] {
+function construirParametros(nombrePlantilla: string, cliente: RutaCliente): { name: string; value: string }[] {
   const customer_name = cliente.nombre || 'Cliente';
   const order_product = cliente.prod || 'Producto';
   const order_amount = cliente.cobrar ? cliente.cobrar.toFixed(2) : '0.00';
@@ -199,8 +199,8 @@ function construirParametros(
   const yape_owner_name = 'Lorenzo N. Tarazona T.';
   const eta_minutes = '15';
   const start_time = '09:00';
-  const total_deliveries = String(totalDeliveries || 0);
-  const delivery_number = String(deliveryNumber || 0);
+  const total_deliveries = '0';
+  const delivery_number = '0';
 
   switch (nombrePlantilla) {
     case 'inicio_ruta':
@@ -267,9 +267,7 @@ export async function enviarPlantillaMeta(
   config: { phoneNumberId: string; accessToken: string; mockMode?: boolean },
   telefono: string,
   plantilla: PlantillaMeta,
-  cliente?: RutaCliente,
-  deliveryNumber?: number,
-  totalDeliveries?: number
+  cliente?: RutaCliente
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const telNormalizado = normalizarTelefono(telefono);
 
@@ -283,61 +281,25 @@ export async function enviarPlantillaMeta(
     };
   }
 
-  // 🎯 Construir parámetros del cliente SIEMPRE
-  // Aunque no tengamos datos del cliente, enviamos valores por defecto
-  console.log('👤 Cliente recibido en enviarPlantillaMeta:', cliente ? {
-    nombre: cliente.nombre,
-    prod: cliente.prod,
-    cobrar: cliente.cobrar,
-    dir: cliente.dir,
-    dist: cliente.dist
-  } : 'NO HAY CLIENTE');
-
-  const clienteData = cliente || {
-    id: 0,
-    nombre: 'Cliente',
-    cel: telefono,
-    celular: telefono,
-    telefono: telefono,
-    prod: 'Producto',
-    cobrar: 0,
-    dir: 'Dirección',
-    dist: 'Distrito',
-    st: 'pendiente'
-  };
-
-  const params = construirParametros(plantilla.name, clienteData, deliveryNumber, totalDeliveries);
+  // Construir parámetros del cliente
   let componentes: any[] = [];
-
-  // 🖼️ Agregar header de imagen si la plantilla lo requiere
-  const headerImageUrl = PLANTILLAS_CON_HEADER_IMAGEN[plantilla.name];
-  if (headerImageUrl) {
-    componentes.push({
-      type: 'header',
-      parameters: [{
-        type: 'image',
-        image: {
-          link: headerImageUrl
-        }
-      }]
-    });
+  if (cliente) {
+    const params = construirParametros(plantilla.name, cliente);
+    if (params.length > 0) {
+      // 🎯 FIX: Enviar parámetros con NOMBRE (no con números)
+      // Meta Cloud API v21+ soporta parámetros con nombre
+      componentes = [{
+        type: 'body',
+        parameters: params.map(p => ({
+          type: 'text',
+          text: p.value,
+          parameter_name: p.name  // ← CLAVE: nombre de la variable
+        }))
+      }];
+    }
   }
 
-  // 📝 Agregar body con los parámetros del cliente
-  if (params.length > 0) {
-    componentes.push({
-      type: 'body',
-      parameters: params.map(p => ({
-        type: 'text',
-        text: p.value,
-        parameter_name: p.name  // ← OBLIGATORIO: Meta lo requiere
-      }))
-    });
-  }
-
-  console.log('📦 Componentes a enviar:', JSON.stringify(componentes, null, 2));
-
-  const url = `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`;
+  const url = `https://graph.facebook.com/v21.0/${config.phoneNumberId}/messages`;
 
   const enviarRequest = async (comps: any[]) => {
     const body: any = {
@@ -371,50 +333,35 @@ export async function enviarPlantillaMeta(
   };
 
   try {
-    // Enviar CON parámetros del cliente
+    // INTENTO 1: Con parámetros del cliente
     if (componentes.length > 0) {
-      console.log('🔄 Enviando con parámetros:', JSON.stringify(componentes, null, 2));
+      console.log('🔄 Intento 1: Con parámetros');
       const { response, data } = await enviarRequest(componentes);
-
-      console.log('📡 Respuesta Meta:', {
-        status: response.status,
-        ok: response.ok,
-        data: data
-      });
 
       if (response.ok && data.messages?.[0]?.id) {
         return { success: true, messageId: data.messages[0].id };
       }
 
-      // 🎯 Mostrar el error COMPLETO de Meta en la UI
       const errorMsg = data.error?.message || '';
-      const errorCode = data.error?.code || '';
-      const errorSubcode = data.error?.error_subcode || '';
-      const errorDetails = data.error?.error_data?.details || '';
-
-      const fullError = `[${errorCode}] ${errorMsg}${errorSubcode ? ' (sub:' + errorSubcode + ')' : ''}${errorDetails ? ' | ' + errorDetails : ''}`;
-
-      console.log('❌ Error completo de Meta:', JSON.stringify(data.error, null, 2));
-
-      return { success: false, error: fullError };
+      // Si el error es 132000 (parámetros no coinciden), intentar SIN parámetros
+      if (errorMsg.includes('132000') || errorMsg.includes('parameters does not match')) {
+        console.log('⚠️ Error 132000 - Intentando SIN parámetros...');
+      } else {
+        return { success: false, error: errorMsg };
+      }
     }
 
-    // Si no hay parámetros (plantilla sin variables), enviar sin componentes
-    console.log('🔄 Enviando sin parámetros (plantilla sin variables)');
+    // INTENTO 2: SIN parámetros (template fijo sin variables)
+    console.log('🔄 Intento 2: SIN parámetros');
     const { response: resp2, data: data2 } = await enviarRequest([]);
 
     if (resp2.ok && data2.messages?.[0]?.id) {
       return { success: true, messageId: data2.messages[0].id };
     }
 
-    const errorMsg2 = data2.error?.message || '';
-    const errorCode2 = data2.error?.code || '';
-    const errorDetails2 = data2.error?.error_data?.details || '';
-    const fullError2 = `[${errorCode2}] ${errorMsg2}${errorDetails2 ? ' | ' + errorDetails2 : ''}`;
-
     return {
       success: false,
-      error: fullError2 || `HTTP ${resp2.status}`,
+      error: data2.error?.message || `HTTP ${resp2.status}`,
     };
   } catch (err: any) {
     return {
