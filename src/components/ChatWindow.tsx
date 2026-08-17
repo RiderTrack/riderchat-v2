@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Chat, Message, MessageMedia, QuickTemplate } from '../types/chat';
+import { Chat, Message, MessageMedia, QuickTemplate, WhatsAppConfig } from '../types/chat';
 import { ClientHeader } from './ClientHeader';
 import { MessageItem } from './MessageItem';
 import { MessageInput } from './MessageInput';
@@ -21,6 +21,7 @@ interface ChatWindowProps {
   quickTemplates: QuickTemplate[];
   isSending?: boolean;
   isLoadingMessages?: boolean;
+  config?: WhatsAppConfig;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -36,6 +37,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   quickTemplates,
   isSending = false,
   isLoadingMessages = false,
+  config,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showInfoPanel, setShowInfoPanel] = useState<boolean>(false);
@@ -173,6 +175,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         clientName={chat.clientName}
         clientPhone={chat.clientPhone}
         isSending={isSending}
+        config={config}
       />
 
       {/* Client Detail Info Slide Panel */}

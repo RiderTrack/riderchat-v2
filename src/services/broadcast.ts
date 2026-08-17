@@ -147,6 +147,17 @@ export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
   },
 ];
 
+// Plantillas que se muestran en el Broadcast masivo (solo 2)
+// Las demás se usan como botones rápidos en cada chat individual
+export const PLANTILLAS_BROADCAST: PlantillaMeta[] = PLANTILLAS_APROBADAS.filter(
+  p => p.name === 'inicio_ruta' || p.name === 'solicitar_ubicacion'
+);
+
+// Plantillas para botones rápidos en cada chat (excluyendo las de broadcast)
+export const PLANTILLAS_BOTONES_RAPIDOS: PlantillaMeta[] = PLANTILLAS_APROBADAS.filter(
+  p => p.name !== 'inicio_ruta' && p.name !== 'solicitar_ubicacion'
+);
+
 // ═══════════════════════════════════════════════════════════
 // 🖼️ CONFIGURACIÓN DE HEADERS DE PLANTILLAS
 // Algunas plantillas tienen header de IMAGEN que debemos enviar

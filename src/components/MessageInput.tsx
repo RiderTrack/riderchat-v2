@@ -12,7 +12,9 @@ import {
   Smile,
   Loader2,
 } from 'lucide-react';
-import { QuickTemplate, MessageMedia } from '../types/chat';
+import { QuickTemplate, MessageMedia, WhatsAppConfig } from '../types/chat';
+import { enviarPlantillaMeta, PLANTILLAS_BOTONES_RAPIDOS, PlantillaMeta } from '../services/broadcast';
+import { sendMessageToFirestore, updateMessageStatus, updateMessageMetaId } from '../services/firestore';
 
 interface MessageInputProps {
   draft: string;
@@ -25,6 +27,7 @@ interface MessageInputProps {
   orderAmount?: number;
   orderProduct?: string;
   isSending?: boolean;
+  config?: WhatsAppConfig;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -38,6 +41,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   orderAmount = 0,
   orderProduct = '',
   isSending = false,
+  config,
 }) => {
   const [showAttachmentMenu, setShowAttachmentMenu] = useState<boolean>(false);
   const [showTemplatesMenu, setShowTemplatesMenu] = useState<boolean>(false);
@@ -102,96 +106,77 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   // ═══════════════════════════════════════════════════════════
-  // 🚀 BOTONES RÁPIDOS MATE PHARMACY
-  // Funciones para mandar mensajes pre-armados (sin plantilla aprobada)
-  // Solo funcionan si el cliente respondió en las últimas 24h
+  // 🚀 BOTONES RÁPIDOS CON PLANTILLAS APROBADAS
+  // Usan las plantillas aprobadas por Meta + guardan en Firestore
   // ═══════════════════════════════════════════════════════════
 
-  const sendQuickMessage = async (text: string) => {
-    if (isSending) return;
-    await onSendMessage(text);
-  };
+  const [sendingTemplate, setSendingTemplate] = useState<string | null>(null);
 
-  const sendQR = () => {
-    const monto = orderAmount > 0 ? orderAmount.toFixed(2) : '0.00';
-    const producto = orderProduct || 'Producto no especificado';
-    const texto = `Buenas, *${clientName}* 👋
+  const enviarPlantillaBoton = async (plantilla: PlantillaMeta) => {
+    if (!config || !clientPhone) {
+      alert('⚠️ No hay configuración de Meta API o número de cliente');
+      return;
+    }
 
-Puedes escanear el *QR* o copiar el número 👇
+    setSendingTemplate(plantilla.name);
 
-El número de *SOLO YAPE* es:
-📱 *980811297*
+    try {
+      // Crear datos del cliente para los parámetros
+      const clienteData = {
+        id: 0,
+        nombre: clientName,
+        cel: clientPhone,
+        celular: clientPhone,
+        telefono: clientPhone,
+        prod: orderProduct || 'Producto',
+        cobrar: orderAmount || 0,
+        dir: '',
+        dist: '',
+      };
 
-A nombre de:
-\`Lorenzo N. Tarazona T.\`
+      // Para eta_actualizada, pedir minutos
+      let minutos = '15';
+      if (plantilla.name === 'eta_actualizada') {
+        const input = prompt('¿En cuántos minutos llegás?', '15');
+        if (!input) {
+          setSendingTemplate(null);
+          return;
+        }
+        minutos = input;
+      }
 
-📦 Producto:
-*${producto}*
+      // Enviar plantilla via Meta API
+      const resultado = await enviarPlantillaMeta(
+        config,
+        clientPhone,
+        plantilla,
+        clienteData
+      );
 
-💰 Monto a pagar:
-*S/ ${monto}*
+      if (resultado.success && resultado.messageId) {
+        // Guardar en Firestore para que aparezca en el panel
+        const firestoreMsgId = await sendMessageToFirestore(clientPhone, {
+          direction: 'sent',
+          text: `📋 ${plantilla.emoji} ${plantilla.label} (plantilla)`,
+          status: 'sent',
+          timestamp: Date.now(),
+          senderId: 'rider-meta',
+        });
 
-⚠️ Por favor verifique que el nombre en Yape sea el correcto antes de realizar el pago.
+        // Guardar el metaMessageId para actualizar estado después
+        await updateMessageMetaId(clientPhone, firestoreMsgId, resultado.messageId);
 
-📸 Le agradecería enviarme la \`captura de pantalla\` del pago para confirmar la entrega y *continuar* con mi *ruta* 🚚
-
-🙌 ¡Muchas gracias!🎉`;
-    sendQuickMessage(texto);
-  };
-
-  const sendEstoyLlegando = () => {
-    const minutos = prompt('¿En cuántos minutos llegás?', '15');
-    if (!minutos) return;
-    const monto = orderAmount > 0 ? orderAmount.toFixed(2) : '0.00';
-    const producto = orderProduct || 'Producto no especificado';
-    const texto = `🚚 Hola, *${clientName}* 👋
-
-Le informo que estaré llegando aproximadamente en *${minutos} minutos* ⏱️
-
-📦 Pedido:
-> *${producto}*
-
-💰 Monto a pagar:
-*S/ ${monto}*
-
-📲 \`Por favor mantenerse atento(a) al teléfono para coordinar la entrega.\`
-
-🙌 ¡Muchas gracias!`;
-    sendQuickMessage(texto);
-  };
-
-  const sendEntregado = () => {
-    const monto = orderAmount > 0 ? orderAmount.toFixed(2) : '0.00';
-    const producto = orderProduct || 'Producto no especificado';
-    const texto = `✅ ¡*${clientName}*, tu pedido fue entregado!
-
-📦 *${producto}*
-💰 Monto cobrado: *S/ ${monto}*
-
-🌟 _Seguinos en nuestras redes:_
-
-🌍 *Web:* https://tiendasmate.com/
-📘 *Facebook:* Matebelleza
-📸 *Instagram:* @mate.ortopedia
-
-¡Muchas gracias por tu preferencia! 🙌
-Esperamos verte pronto 💜
-
-— *Rudy Alen | MATE*_`;
-    sendQuickMessage(texto);
-  };
-
-  const sendGraciasFabiana = () => {
-    const texto = `✅ ¡Pedido entregado!
-
-Gracias por confiar en MATE Pharmacy 🙏
-
-¿Tienes alguna consulta o reclamo?
-📱 WhatsApp: 956 203 893 (Fabiana)
-📞 Llamadas: 956 203 893
-
-¡Estamos para ayudarte! 😊`;
-    sendQuickMessage(texto);
+        console.log(`✅ Plantilla ${plantilla.name} enviada a ${clientPhone}`);
+      } else {
+        console.error(`❌ Error enviando plantilla: ${resultado.error}`);
+        alert(`❌ Error: ${resultado.error}`);
+      }
+    } catch (e) {
+      console.error('Error enviando plantilla:', e);
+      alert(`❌ Error: ${e instanceof Error ? e.message : 'desconocido'}`);
+    } finally {
+      setSendingTemplate(null);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -273,48 +258,31 @@ Gracias por confiar en MATE Pharmacy 🙏
         accept="image/*,application/pdf,audio/*"
       />
 
-      {/* 🚀 BOTONES RÁPIDOS MATE PHARMACY */}
-      {!isRecordingVoice && (
+      {/* 🚀 BOTONES RÁPIDOS CON PLANTILLAS APROBADAS */}
+      {!isRecordingVoice && PLANTILLAS_BOTONES_RAPIDOS.length > 0 && (
         <div className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-none pb-1">
-          <button
-            onClick={sendQR}
-            disabled={isSending}
-            className="flex items-center gap-1 px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-semibold whitespace-nowrap hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors active:scale-95 disabled:opacity-50 shrink-0"
-            title="💵 Enviar QR de Yape"
-          >
-            <span>💵</span>
-            <span>QR Yape</span>
-          </button>
-
-          <button
-            onClick={sendEstoyLlegando}
-            disabled={isSending}
-            className="flex items-center gap-1 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold whitespace-nowrap hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors active:scale-95 disabled:opacity-50 shrink-0"
-            title="⏱️ Avisar llegada"
-          >
-            <span>⏱️</span>
-            <span>Llegando</span>
-          </button>
-
-          <button
-            onClick={sendEntregado}
-            disabled={isSending}
-            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-full text-xs font-semibold whitespace-nowrap hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors active:scale-95 disabled:opacity-50 shrink-0"
-            title="✅ Pedido entregado"
-          >
-            <span>✅</span>
-            <span>Entregado</span>
-          </button>
-
-          <button
-            onClick={sendGraciasFabiana}
-            disabled={isSending}
-            className="flex items-center gap-1 px-3 py-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-xs font-semibold whitespace-nowrap hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors active:scale-95 disabled:opacity-50 shrink-0"
-            title="🙏 Gracias + Fabiana"
-          >
-            <span>🙏</span>
-            <span>Gracias</span>
-          </button>
+          {PLANTILLAS_BOTONES_RAPIDOS.map((plantilla) => (
+            <button
+              key={plantilla.name}
+              onClick={() => enviarPlantillaBoton(plantilla)}
+              disabled={isSending || sendingTemplate !== null}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors active:scale-95 disabled:opacity-50 shrink-0 ${
+                plantilla.name === 'qr_metodo_de_pago'
+                  ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50'
+                  : plantilla.name === 'eta_actualizada'
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                  : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
+              }`}
+              title={plantilla.descripcion}
+            >
+              {sendingTemplate === plantilla.name ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <span>{plantilla.emoji}</span>
+              )}
+              <span>{plantilla.label}</span>
+            </button>
+          ))}
         </div>
       )}
 

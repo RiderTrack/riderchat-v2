@@ -17,13 +17,14 @@ import { WhatsAppConfig } from '../types/chat';
 import {
   RutaActiva,
   RutaCliente,
-  PLANTILLAS_APROBADAS,
+  PLANTILLAS_BROADCAST,
   PlantillaMeta,
   subscribeToRutaActiva,
   getClientesDeRuta,
   normalizarTelefono,
   enviarPlantillaMeta,
 } from '../services/broadcast';
+import { sendMessageToFirestore, updateMessageMetaId } from '../services/firestore';
 
 interface BroadcastModalProps {
   isOpen: boolean;
@@ -46,7 +47,7 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({
 }) => {
   const [ruta, setRuta] = useState<RutaActiva | null>(null);
   const [cargandoRuta, setCargandoRuta] = useState(true);
-  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState<PlantillaMeta>(PLANTILLAS_APROBADAS[0]);
+  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState<PlantillaMeta>(PLANTILLAS_BROADCAST[0]);
   const [delay, setDelay] = useState<number>(30);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [mostrarClientes, setMostrarClientes] = useState(true);
@@ -187,6 +188,24 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({
 
       if (resultado.success) {
         enviados++;
+
+        // 💾 Guardar mensaje en Firestore para que aparezca en el panel
+        if (resultado.messageId) {
+          try {
+            const firestoreMsgId = await sendMessageToFirestore(tel, {
+              direction: 'sent',
+              text: `📋 ${plantillaSeleccionada.emoji} ${plantillaSeleccionada.label} (broadcast)`,
+              status: 'sent',
+              timestamp: Date.now(),
+              senderId: 'broadcast',
+            });
+            await updateMessageMetaId(tel, firestoreMsgId, resultado.messageId);
+            console.log(`💾 Broadcast guardado en Firestore: ${tel}`);
+          } catch (e) {
+            console.warn('⚠️ Error guardando broadcast en Firestore:', e);
+          }
+        }
+
         setEstadosEnvio((prev) => ({
           ...prev,
           [tel]: { telefono: tel, estado: 'enviado' },
@@ -281,7 +300,7 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({
               📋 Plantilla aprobada
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {PLANTILLAS_APROBADAS.map((p) => (
+              {PLANTILLAS_BROADCAST.map((p) => (
                 <button
                   key={p.name}
                   onClick={() => setPlantillaSeleccionada(p)}
