@@ -147,6 +147,23 @@ export const PLANTILLAS_APROBADAS: PlantillaMeta[] = [
   },
 ];
 
+// ═══════════════════════════════════════════════════════════
+// 🖼️ CONFIGURACIÓN DE HEADERS DE PLANTILLAS
+// Algunas plantillas tienen header de IMAGEN que debemos enviar
+// ═══════════════════════════════════════════════════════════
+
+// URL pública del logo MATE en Firebase Storage
+const MATE_LOGO_URL = 'https://firebasestorage.googleapis.com/v0/b/ridertrack-93c8a.firebasestorage.app/o/logos%2Fmate_logo.png?alt=media';
+
+// Plantillas que tienen header de imagen
+const PLANTILLAS_CON_HEADER_IMAGEN: { [key: string]: string } = {
+  'inicio_ruta': MATE_LOGO_URL,
+  'solicitar_ubicacion': MATE_LOGO_URL,
+  'qr_metodo_de_pago': MATE_LOGO_URL,
+  // eta_actualizada tiene header de TEXTO, no imagen
+  // entrega_completada: confirmar si tiene header
+};
+
 /**
  * Construye los parámetros para cada plantilla usando variables CON NOMBRE
  * Meta Cloud API soporta variables con nombre ({{customer_name}})
@@ -262,15 +279,30 @@ export async function enviarPlantillaMeta(
   const params = construirParametros(plantilla.name, clienteData);
   let componentes: any[] = [];
 
+  // 🖼️ Agregar header de imagen si la plantilla lo requiere
+  const headerImageUrl = PLANTILLAS_CON_HEADER_IMAGEN[plantilla.name];
+  if (headerImageUrl) {
+    componentes.push({
+      type: 'header',
+      parameters: [{
+        type: 'image',
+        image: {
+          link: headerImageUrl
+        }
+      }]
+    });
+  }
+
+  // 📝 Agregar body con los parámetros del cliente
   if (params.length > 0) {
-    componentes = [{
+    componentes.push({
       type: 'body',
       parameters: params.map(p => ({
         type: 'text',
         text: p.value,
         parameter_name: p.name  // ← OBLIGATORIO: Meta lo requiere
       }))
-    }];
+    });
   }
 
   console.log('📦 Componentes a enviar:', JSON.stringify(componentes, null, 2));
