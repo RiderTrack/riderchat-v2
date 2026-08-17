@@ -169,7 +169,12 @@ const PLANTILLAS_CON_HEADER_IMAGEN: { [key: string]: string } = {
  * Meta Cloud API soporta variables con nombre ({{customer_name}})
  * cuando se envían como objects en lugar de strings
  */
-function construirParametros(nombrePlantilla: string, cliente: RutaCliente): { name: string; value: string }[] {
+function construirParametros(
+  nombrePlantilla: string,
+  cliente: RutaCliente,
+  deliveryNumber?: number,
+  totalDeliveries?: number
+): { name: string; value: string }[] {
   const customer_name = cliente.nombre || 'Cliente';
   const order_product = cliente.prod || 'Producto';
   const order_amount = cliente.cobrar ? cliente.cobrar.toFixed(2) : '0.00';
@@ -179,8 +184,8 @@ function construirParametros(nombrePlantilla: string, cliente: RutaCliente): { n
   const yape_owner_name = 'Lorenzo N. Tarazona T.';
   const eta_minutes = '15';
   const start_time = '09:00';
-  const total_deliveries = '0';
-  const delivery_number = '0';
+  const total_deliveries = String(totalDeliveries || 0);
+  const delivery_number = String(deliveryNumber || 0);
 
   switch (nombrePlantilla) {
     case 'inicio_ruta':
@@ -247,7 +252,9 @@ export async function enviarPlantillaMeta(
   config: { phoneNumberId: string; accessToken: string; mockMode?: boolean },
   telefono: string,
   plantilla: PlantillaMeta,
-  cliente?: RutaCliente
+  cliente?: RutaCliente,
+  deliveryNumber?: number,
+  totalDeliveries?: number
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const telNormalizado = normalizarTelefono(telefono);
 
@@ -263,6 +270,14 @@ export async function enviarPlantillaMeta(
 
   // 🎯 Construir parámetros del cliente SIEMPRE
   // Aunque no tengamos datos del cliente, enviamos valores por defecto
+  console.log('👤 Cliente recibido en enviarPlantillaMeta:', cliente ? {
+    nombre: cliente.nombre,
+    prod: cliente.prod,
+    cobrar: cliente.cobrar,
+    dir: cliente.dir,
+    dist: cliente.dist
+  } : 'NO HAY CLIENTE');
+
   const clienteData = cliente || {
     id: 0,
     nombre: 'Cliente',
@@ -276,7 +291,7 @@ export async function enviarPlantillaMeta(
     st: 'pendiente'
   };
 
-  const params = construirParametros(plantilla.name, clienteData);
+  const params = construirParametros(plantilla.name, clienteData, deliveryNumber, totalDeliveries);
   let componentes: any[] = [];
 
   // 🖼️ Agregar header de imagen si la plantilla lo requiere

@@ -170,7 +170,20 @@ export const BroadcastModal: React.FC<BroadcastModalProps> = ({
         dist: clienteActual.dist
       } : 'NO ENCONTRADO - usando valores por defecto');
 
-      const resultado = await enviarPlantillaMeta(config, tel, plantillaSeleccionada, clienteActual);
+      // 🎯 Calcular posición del cliente en la ruta (ej: posición 13 de 15)
+      const totalClientes = clientes.length;
+      const posicionCliente = clienteActual
+        ? clientes.findIndex(c =>
+            normalizarTelefono(c.cel || c.celular || c.telefono || '') === telSeleccionado
+          ) + 1
+        : 0;
+
+      console.log('📊 Posición del cliente:', posicionCliente, 'de', totalClientes);
+
+      const resultado = await enviarPlantillaMeta(
+        config, tel, plantillaSeleccionada, clienteActual,
+        posicionCliente, totalClientes
+      );
 
       if (resultado.success) {
         enviados++;
